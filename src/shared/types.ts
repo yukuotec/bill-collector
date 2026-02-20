@@ -1,0 +1,93 @@
+export interface Transaction {
+  id: string;
+  source: 'alipay' | 'wechat' | 'yunshanfu';
+  original_id?: string;
+  date: string;
+  amount: number;
+  type: 'expense' | 'income' | 'transfer';
+  counterparty?: string;
+  description?: string;
+  category?: string;
+  notes?: string;
+  is_duplicate?: boolean | number;
+  merged_with?: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface DuplicateReviewItem extends Transaction {
+  target_id?: string | null;
+  target_date?: string | null;
+  target_amount?: number | null;
+  target_counterparty?: string | null;
+  target_description?: string | null;
+  target_source?: Transaction['source'] | null;
+  target_type?: Transaction['type'] | null;
+}
+
+export interface ImportRecord {
+  id: string;
+  source: 'alipay' | 'wechat' | 'yunshanfu';
+  file_name?: string;
+  record_count: number;
+  imported_at: string;
+}
+
+export interface SummaryQuery {
+  year?: number;
+  months?: number;
+}
+
+export interface SummaryMonthlyItem {
+  month: string;
+  expense: number;
+  income: number;
+}
+
+export interface SummaryCategoryItem {
+  category: string;
+  total: number;
+}
+
+export interface SummaryMerchantItem {
+  counterparty: string;
+  count: number;
+  total: number;
+}
+
+export interface Summary {
+  year: number;
+  currentMonth: string;
+  currentMonthExpense: number;
+  currentMonthIncome: number;
+  monthly: SummaryMonthlyItem[];
+  byCategory: SummaryCategoryItem[];
+  topMerchants: SummaryMerchantItem[];
+  availableYears: number[];
+}
+
+export type TransactionSource = 'alipay' | 'wechat' | 'yunshanfu';
+export type TransactionType = 'expense' | 'income' | 'transfer';
+export type TransactionSortBy = 'date' | 'amount';
+export type SortOrder = 'asc' | 'desc';
+
+export interface TransactionQuery {
+  category?: string;
+  source?: TransactionSource;
+  type?: TransactionType;
+  startDate?: string;
+  endDate?: string;
+  q?: string;
+  page?: number;
+  pageSize?: number;
+  sortBy?: TransactionSortBy;
+  sortOrder?: SortOrder;
+}
+
+export interface TransactionListResponse {
+  items: Transaction[];
+  totalCount: number;
+  total?: number;
+  page: number;
+  pageSize: number;
+}

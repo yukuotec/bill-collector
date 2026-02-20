@@ -1,0 +1,693 @@
+import fs from 'fs';
+import os from 'os';
+import path from 'path';
+import { execFileSync } from 'child_process';
+import { TextDecoder } from 'util';
+import Papa from 'papaparse';
+import { Dialog, IpcMain } from 'electron';
+import { getDatabase, getDatabasePath, insertTransactions, saveDatabase } from './database';
+import { parseAlipay } from '../parsers/alipay';
+import { parseWechat } from '../parsers/wechat';
+import { parseYunshanfu } from '../parsers/yunshanfu';
+import { parsePdfBill } from '../parsers/pdf';
+import { parseHtmlBill } from '../parsers/html';
+import { parseImageBillWithOcr } from '../parsers/ocr';
+import { DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+
+type Source = 'alipay' | 'wechat' | 'yunshanfu';
+type SupportedImportExt = '.csv' | '.pdf' | '.html' | '.htm' | '.png';
+
+interface ImportCsvOptions {
+  dryRun?: boolean;
+  previewLimit?: number;
+}
+
+interface ImportCsvResult {
+  importId: string | null;
+  parsedCount: number;
+  inserted: number;
+  exactMerged: number;
+  fuzzyFlagged: number;
+  errors: string[];
+  preview: Array<Pick<Transaction, 'date' | 'type' | 'amount' | 'counterparty' | 'description' | 'category'>>;
+}
+
+interface DuplicateCandidate {
+  id: string;
+  date: string;
+  amount: number;
+  counterparty?: string;
+  description?: string;
+}
+
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).slice(2);
+}
+
+function parseTransactionsBySource(content: string, source: Source): Transaction[] {
+  switch (source) {
+    case 'alipay':
+      return parseAlipay(content);
+    case 'wechat':
+      return parseWechat(content);
+    case 'yunshanfu':
+      return parseYunshanfu(content);
+    default:
+      throw new Error(`Unknown source: ${source}`);
+  }
+}
+
+function decodeCsvCandidates(buffer: Buffer): string[] {
+  const utf8 = buffer.toString('utf-8');
+  const candidates = [utf8];
+
+  const shouldTryGb18030 =
+    utf8.includes('\ufffd') ||
+    !/(交易时间|交易创建时间|交易日期|金额|收\/支|交易类型|支付宝|微信|云闪付)/.test(utf8);
+
+  if (!shouldTryGb18030) {
+    return candidates;
+  }
+
+  try {
+    const gb18030 = new TextDecoder('gb18030').decode(buffer);
+    if (gb18030 && gb18030 !== utf8) {
+      candidates.push(gb18030);
+    }
+  } catch {
+    // Ignore decoder availability issues and keep utf-8 fallback only.
+  }
+
+  return candidates;
+}
+
+async function parseTransactionsFromFile(filePath: string, source: Source): Promise<Transaction[]> {
+  const ext = path.extname(filePath).toLowerCase() as SupportedImportExt;
+
+  switch (ext) {
+    case '.csv': {
+      const buffer = fs.readFileSync(filePath);
+      const decodedCandidates = decodeCsvCandidates(buffer);
+      const fallback = parseTransactionsBySource(decodedCandidates[0], source);
+
+      if (fallback.length > 0 || decodedCandidates.length === 1) {
+        return fallback;
+      }
+
+      for (let i = 1; i < decodedCandidates.length; i += 1) {
+        const parsed = parseTransactionsBySource(decodedCandidates[i], source);
+        if (parsed.length > 0) {
+          return parsed;
+        }
+      }
+
+      return fallback;
+    }
+    case '.pdf':
+      return parsePdfBill(filePath, source);
+    case '.html':
+    case '.htm':
+      return parseHtmlBill(filePath, source);
+    case '.png':
+      return parseImageBillWithOcr(filePath, source);
+    default:
+      throw new Error(`暂不支持的文件类型: ${ext || 'unknown'}`);
+  }
+}
+
+function buildPreview(
+  transactions: Transaction[],
+  previewLimit: number
+): Array<Pick<Transaction, 'date' | 'type' | 'amount' | 'counterparty' | 'description' | 'category'>> {
+  return transactions.slice(0, previewLimit).map((txn) => ({
+    date: txn.date,
+    type: txn.type,
+    amount: txn.amount,
+    counterparty: txn.counterparty,
+    description: txn.description,
+    category: txn.category,
+  }));
+}
+
+function normalizeText(value?: string): string {
+  return (value || '')
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, '')
+    .trim();
+}
+
+function transactionSignature(txn: Pick<Transaction, 'counterparty' | 'description'>): string {
+  const counterparty = normalizeText(txn.counterparty);
+  const description = normalizeText(txn.description);
+  return `${counterparty}|${description}`;
+}
+
+function hasTextSignature(txn: Pick<Transaction, 'counterparty' | 'description'>): boolean {
+  return normalizeText(txn.counterparty).length > 0 || normalizeText(txn.description).length > 0;
+}
+
+function levenshtein(a: string, b: string): number {
+  if (a === b) return 0;
+  if (!a.length) return b.length;
+  if (!b.length) return a.length;
+
+  const dp: number[] = Array.from({ length: b.length + 1 }, (_, idx) => idx);
+  for (let i = 1; i <= a.length; i += 1) {
+    let prev = dp[0];
+    dp[0] = i;
+    for (let j = 1; j <= b.length; j += 1) {
+      const temp = dp[j];
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[j] = Math.min(dp[j] + 1, dp[j - 1] + 1, prev + cost);
+      prev = temp;
+    }
+  }
+  return dp[b.length];
+}
+
+function queryAll(sql: string, params: (string | number)[] = []): Record<string, unknown>[] {
+  const db = getDatabase();
+  const stmt = db.prepare(sql);
+  stmt.bind(params);
+
+  const results: Record<string, unknown>[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject());
+  }
+  stmt.free();
+  return results;
+}
+
+function findDuplicateCandidate(txn: Transaction): { exactId?: string; fuzzyId?: string } {
+  const db = getDatabase();
+  const stmt = db.prepare(
+    `SELECT id, date, amount, counterparty, description
+     FROM transactions
+     WHERE ABS(amount - ?) < 0.005
+       AND date BETWEEN date(?, '-1 day') AND date(?, '+1 day')
+     LIMIT 100`
+  );
+  stmt.bind([txn.amount, txn.date, txn.date]);
+
+  const inputSig = transactionSignature(txn);
+  const inputHasSignature = hasTextSignature(txn);
+  let fuzzyBest: { id: string; distance: number } | null = null;
+
+  while (stmt.step()) {
+    const candidate = stmt.getAsObject() as unknown as DuplicateCandidate;
+    const isSameDay = candidate.date === txn.date;
+    const candidateSig = transactionSignature(candidate);
+    const candidateHasSignature = hasTextSignature(candidate);
+
+    if (isSameDay && inputHasSignature && candidateHasSignature && candidateSig === inputSig) {
+      stmt.free();
+      return { exactId: candidate.id };
+    }
+
+    if (!inputHasSignature || !candidateHasSignature) {
+      continue;
+    }
+
+    const dist = levenshtein(inputSig, candidateSig);
+    if (dist <= 3 && (!fuzzyBest || dist < fuzzyBest.distance)) {
+      fuzzyBest = { id: candidate.id, distance: dist };
+    }
+  }
+
+  stmt.free();
+  return fuzzyBest ? { fuzzyId: fuzzyBest.id } : {};
+}
+
+function xmlEscape(value: unknown): string {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&apos;');
+}
+
+function toColumnName(index: number): string {
+  let n = index + 1;
+  let name = '';
+  while (n > 0) {
+    const remainder = (n - 1) % 26;
+    name = String.fromCharCode(65 + remainder) + name;
+    n = Math.floor((n - 1) / 26);
+  }
+  return name;
+}
+
+function toSheetXml(headers: string[], rows: Record<string, unknown>[]): string {
+  const allRows: Array<Record<string, unknown>> = [{}, ...rows];
+  const xmlRows = allRows
+    .map((row, rowIndex) => {
+      const cells = headers
+        .map((header, colIndex) => {
+          const ref = `${toColumnName(colIndex)}${rowIndex + 1}`;
+          const value = rowIndex === 0 ? header : row[header];
+          if (typeof value === 'number' && Number.isFinite(value)) {
+            return `<c r="${ref}"><v>${value}</v></c>`;
+          }
+          return `<c r="${ref}" t="inlineStr"><is><t>${xmlEscape(value)}</t></is></c>`;
+        })
+        .join('');
+      return `<row r="${rowIndex + 1}">${cells}</row>`;
+    })
+    .join('');
+
+  const endRef = `${toColumnName(Math.max(0, headers.length - 1))}${Math.max(1, rows.length + 1)}`;
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <dimension ref="A1:${endRef}"/>
+  <sheetData>${xmlRows}</sheetData>
+</worksheet>`;
+}
+
+function writeXlsx(filePath: string, rows: Record<string, unknown>[]): void {
+  const headers = [
+    'date',
+    'type',
+    'amount',
+    'source',
+    'counterparty',
+    'description',
+    'category',
+    'notes',
+    'original_id',
+    'id',
+  ];
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'expense-xlsx-'));
+
+  try {
+    fs.mkdirSync(path.join(tempDir, '_rels'), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, 'xl', '_rels'), { recursive: true });
+    fs.mkdirSync(path.join(tempDir, 'xl', 'worksheets'), { recursive: true });
+
+    fs.writeFileSync(
+      path.join(tempDir, '[Content_Types].xml'),
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+  <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+  <Default Extension="xml" ContentType="application/xml"/>
+  <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+  <Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>
+</Types>`,
+      'utf-8'
+    );
+
+    fs.writeFileSync(
+      path.join(tempDir, '_rels', '.rels'),
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>`,
+      'utf-8'
+    );
+
+    fs.writeFileSync(
+      path.join(tempDir, 'xl', 'workbook.xml'),
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"
+ xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets>
+    <sheet name="Transactions" sheetId="1" r:id="rId1"/>
+  </sheets>
+</workbook>`,
+      'utf-8'
+    );
+
+    fs.writeFileSync(
+      path.join(tempDir, 'xl', '_rels', 'workbook.xml.rels'),
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>
+</Relationships>`,
+      'utf-8'
+    );
+
+    fs.writeFileSync(
+      path.join(tempDir, 'xl', 'styles.xml'),
+      `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+  <fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>
+  <fills count="1"><fill><patternFill patternType="none"/></fill></fills>
+  <borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>
+  <cellStyleXfs count="1"><xf/></cellStyleXfs>
+  <cellXfs count="1"><xf xfId="0"/></cellXfs>
+</styleSheet>`,
+      'utf-8'
+    );
+
+    fs.writeFileSync(path.join(tempDir, 'xl', 'worksheets', 'sheet1.xml'), toSheetXml(headers, rows), 'utf-8');
+    execFileSync('zip', ['-q', '-X', '-r', filePath, '.'], { cwd: tempDir });
+  } finally {
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  }
+}
+
+export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
+  ipcMain.handle('select-file', async (_, filters: { name: string; extensions: string[] }[]) => {
+    const result = await dialog.showOpenDialog({
+      properties: ['openFile'],
+      filters: filters.length > 0 ? filters : [{ name: '账单文件', extensions: ['csv', 'pdf', 'html', 'png'] }],
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  });
+
+  ipcMain.handle('import-csv', async (_, filePath: string, source: Source, options?: ImportCsvOptions) => {
+    const result: ImportCsvResult = {
+      importId: null,
+      parsedCount: 0,
+      inserted: 0,
+      exactMerged: 0,
+      fuzzyFlagged: 0,
+      errors: [],
+      preview: [],
+    };
+
+    try {
+      const transactions = await parseTransactionsFromFile(filePath, source);
+      const previewLimit = Math.max(1, options?.previewLimit ?? 5);
+      result.parsedCount = transactions.length;
+      result.preview = buildPreview(transactions, previewLimit);
+
+      if (options?.dryRun) {
+        return result;
+      }
+
+      const db = getDatabase();
+      const now = new Date().toISOString();
+      const importId = generateId();
+      const fileName = path.basename(filePath);
+      const toInsert: Transaction[] = [];
+
+      for (const txn of transactions) {
+        const duplicate = findDuplicateCandidate(txn);
+        if (duplicate.exactId) {
+          result.exactMerged += 1;
+          continue;
+        }
+
+        if (duplicate.fuzzyId) {
+          result.fuzzyFlagged += 1;
+        }
+
+        toInsert.push({
+          ...txn,
+          id: txn.id || generateId(),
+          category: txn.category || '其他',
+          is_duplicate: duplicate.fuzzyId ? 1 : 0,
+          merged_with: duplicate.fuzzyId || null,
+          created_at: now,
+          updated_at: now,
+        });
+      }
+
+      result.inserted = insertTransactions(toInsert);
+
+      db.run(`INSERT INTO imports (id, source, file_name, record_count, imported_at) VALUES (?, ?, ?, ?, ?)`, [
+        importId,
+        source,
+        fileName,
+        result.inserted,
+        now,
+      ]);
+      saveDatabase();
+
+      result.importId = importId;
+      return result;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      result.errors.push(message);
+      return result;
+    }
+  });
+
+  ipcMain.handle('get-transactions', async (_, filters?: TransactionQuery): Promise<TransactionListResponse> => {
+    const where: string[] = ['1=1'];
+    const params: (string | number)[] = [];
+
+    if (filters?.category) {
+      where.push('category = ?');
+      params.push(filters.category);
+    }
+    if (filters?.source) {
+      where.push('source = ?');
+      params.push(filters.source);
+    }
+    if (filters?.type) {
+      where.push('type = ?');
+      params.push(filters.type);
+    }
+    if (filters?.startDate) {
+      where.push('date >= ?');
+      params.push(filters.startDate);
+    }
+    if (filters?.endDate) {
+      where.push('date <= ?');
+      params.push(filters.endDate);
+    }
+    if (filters?.q) {
+      where.push('(description LIKE ? OR counterparty LIKE ? OR notes LIKE ?)');
+      const keyword = `%${filters.q}%`;
+      params.push(keyword, keyword, keyword);
+    }
+
+    const whereClause = where.join(' AND ');
+    const countRows = queryAll(`SELECT COUNT(*) as total FROM transactions WHERE ${whereClause}`, params);
+    const total = Number(countRows[0]?.total ?? 0);
+
+    const sortBy = filters?.sortBy === 'amount' ? 'amount' : 'date';
+    const sortOrder = filters?.sortOrder === 'asc' ? 'ASC' : 'DESC';
+    const page = Math.max(1, filters?.page ?? 1);
+    const pageSize = Math.min(200, Math.max(1, filters?.pageSize ?? 20));
+    const offset = (page - 1) * pageSize;
+
+    const listQuery = `
+      SELECT *
+      FROM transactions
+      WHERE ${whereClause}
+      ORDER BY ${sortBy} ${sortOrder}, created_at DESC
+      LIMIT ? OFFSET ?
+    `;
+    const items = queryAll(listQuery, [...params, pageSize, offset]) as unknown as Transaction[];
+
+    return {
+      items,
+      totalCount: total,
+      total,
+      page,
+      pageSize,
+    };
+  });
+
+  ipcMain.handle('get-duplicate-transactions', async (): Promise<DuplicateReviewItem[]> => {
+    return queryAll(
+      `
+      SELECT
+        d.*,
+        t.id AS target_id,
+        t.date AS target_date,
+        t.amount AS target_amount,
+        t.counterparty AS target_counterparty,
+        t.description AS target_description,
+        t.source AS target_source,
+        t.type AS target_type
+      FROM transactions d
+      LEFT JOIN transactions t ON d.merged_with = t.id
+      WHERE d.is_duplicate = 1
+      ORDER BY d.date DESC, d.created_at DESC
+      `
+    ) as unknown as DuplicateReviewItem[];
+  });
+
+  ipcMain.handle('resolve-duplicate', async (_, id: string, action: 'keep' | 'merge') => {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+
+    if (action === 'keep') {
+      db.run('UPDATE transactions SET is_duplicate = 0, merged_with = NULL, updated_at = ? WHERE id = ?', [now, id]);
+      saveDatabase();
+      return true;
+    }
+
+    const rows = queryAll('SELECT * FROM transactions WHERE id = ? LIMIT 1', [id]);
+    if (rows.length === 0) return false;
+    const txn = rows[0] as unknown as Transaction;
+
+    let targetId = typeof txn.merged_with === 'string' ? txn.merged_with : '';
+    if (!targetId) {
+      const candidate = findDuplicateCandidate(txn);
+      targetId = candidate.exactId || candidate.fuzzyId || '';
+    }
+
+    if (!targetId) return false;
+
+    db.run('DELETE FROM transactions WHERE id = ?', [id]);
+    db.run('UPDATE transactions SET updated_at = ? WHERE id = ?', [now, targetId]);
+    saveDatabase();
+    return true;
+  });
+
+  ipcMain.handle('get-summary', async (_, query?: SummaryQuery): Promise<Summary> => {
+    const now = new Date();
+    const currentYear = now.getFullYear();
+    const currentMonthNumber = String(now.getMonth() + 1).padStart(2, '0');
+    const targetYear = Number.isInteger(query?.year) ? Number(query?.year) : currentYear;
+    const months = Math.min(24, Math.max(6, query?.months ?? 12));
+    const targetMonth = `${targetYear}-${currentMonthNumber}`;
+
+    const availableYearsRows = queryAll(`
+      SELECT DISTINCT CAST(strftime('%Y', date) AS INTEGER) as year
+      FROM transactions
+      WHERE date IS NOT NULL AND date != ''
+      ORDER BY year DESC
+    `);
+    const availableYears = availableYearsRows
+      .map((row) => Number(row.year))
+      .filter((year) => Number.isInteger(year) && year > 0);
+
+    const monthlyRows = queryAll(
+      `
+      SELECT
+        strftime('%Y-%m', date) as month,
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
+      FROM transactions
+      WHERE type IN ('expense', 'income')
+        AND strftime('%Y', date) = ?
+      GROUP BY month
+      ORDER BY month DESC
+      LIMIT ?
+    `,
+      [String(targetYear), months]
+    );
+    const monthly = monthlyRows.map((row) => ({
+      month: String(row.month ?? ''),
+      expense: Number(row.expense ?? 0),
+      income: Number(row.income ?? 0),
+    }));
+
+    const currentMonthRows = queryAll(
+      `
+      SELECT
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
+      FROM transactions
+      WHERE type IN ('expense', 'income')
+        AND strftime('%Y-%m', date) = ?
+    `,
+      [targetMonth]
+    );
+    const currentMonthExpense = Number(currentMonthRows[0]?.expense ?? 0);
+    const currentMonthIncome = Number(currentMonthRows[0]?.income ?? 0);
+
+    const byCategoryRows = queryAll(
+      `
+      SELECT COALESCE(NULLIF(TRIM(category), ''), '其他') as category, SUM(amount) as total
+      FROM transactions
+      WHERE type = 'expense'
+        AND strftime('%Y', date) = ?
+      GROUP BY category
+      ORDER BY total DESC
+    `,
+      [String(targetYear)]
+    );
+    const byCategory = byCategoryRows.map((row) => ({
+      category: String(row.category ?? '其他'),
+      total: Number(row.total ?? 0),
+    }));
+
+    const topMerchantsRows = queryAll(
+      `
+      SELECT counterparty, COUNT(*) as count, SUM(amount) as total
+      FROM transactions
+      WHERE type = 'expense'
+        AND strftime('%Y', date) = ?
+        AND counterparty IS NOT NULL
+        AND TRIM(counterparty) != ''
+      GROUP BY counterparty
+      ORDER BY total DESC, count DESC
+      LIMIT 10
+    `,
+      [String(targetYear)]
+    );
+    const topMerchants = topMerchantsRows.map((row) => ({
+      counterparty: String(row.counterparty ?? ''),
+      count: Number(row.count ?? 0),
+      total: Number(row.total ?? 0),
+    }));
+
+    return {
+      year: targetYear,
+      currentMonth: targetMonth,
+      currentMonthExpense,
+      currentMonthIncome,
+      monthly,
+      byCategory,
+      topMerchants,
+      availableYears: availableYears.length > 0 ? availableYears : [currentYear],
+    };
+  });
+
+  ipcMain.handle('update-category', async (_, id: string, category: string) => {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    db.run('UPDATE transactions SET category = ?, updated_at = ? WHERE id = ?', [category, now, id]);
+    saveDatabase();
+    return true;
+  });
+
+  ipcMain.handle('delete-transaction', async (_, id: string) => {
+    const db = getDatabase();
+    db.run('DELETE FROM transactions WHERE id = ?', [id]);
+    saveDatabase();
+    return true;
+  });
+
+  ipcMain.handle('export-csv', async () => {
+    const transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+    const result = await dialog.showSaveDialog({
+      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+      defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.csv`,
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    const csv = Papa.unparse(transactions);
+    fs.writeFileSync(result.filePath, '\ufeff' + csv, 'utf-8');
+    return result.filePath;
+  });
+
+  ipcMain.handle('export-excel', async () => {
+    const transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+    const result = await dialog.showSaveDialog({
+      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+      defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.xlsx`,
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    writeXlsx(result.filePath, transactions);
+    return result.filePath;
+  });
+
+  ipcMain.handle('backup-database', async () => {
+    const sourcePath = getDatabasePath();
+    const result = await dialog.showSaveDialog({
+      filters: [{ name: 'Database Backup', extensions: ['db'] }],
+      defaultPath: `expenses-backup-${new Date().toISOString().split('T')[0]}.db`,
+    });
+    if (result.canceled || !result.filePath) return null;
+
+    saveDatabase();
+    fs.copyFileSync(sourcePath, result.filePath);
+    return result.filePath;
+  });
+}

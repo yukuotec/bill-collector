@@ -1,0 +1,41 @@
+{
+  "name": "expense-tracker",
+  "version": "1.0.0",
+  "description": "记账小助手 - Personal expense tracker",
+  "main": "dist/main/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
+    "dev:vite": "vite",
+    "dev:electron": "cross-env NODE_ENV=development electron .",
+    "build": "npm run build:vite && npm run build:electron",
+    "build:vite": "vite build",
+    "build:electron": "tsc -p tsconfig.main.json",
+    "test:parsers": "npm run build:electron && node --test tests/parsers.test.js",
+    "start": "electron .",
+    "dist": "npm run build && electron-builder"
+  },
+  "dependencies": {
+    "cheerio": "^1.2.0",
+    "papaparse": "^5.4.1",
+    "pdf-parse": "^1.1.4",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "recharts": "^2.15.0",
+    "sql.js": "^1.11.0",
+    "tesseract.js": "^5.1.1"
+  },
+  "devDependencies": {
+    "@types/papaparse": "^5.3.15",
+    "@types/react": "^18.3.18",
+    "@types/react-dom": "^18.3.5",
+    "@vitejs/plugin-react": "^4.3.4",
+    "concurrently": "^9.1.2",
+    "cross-env": "^7.0.3",
+    "electron": "^33.3.1",
+    "electron-builder": "^25.1.8",
+    "typescript": "^5.7.3",
+    "vite": "^6.0.11"
+  },
+  "author": "",
+  "license": "MIT"
+}
