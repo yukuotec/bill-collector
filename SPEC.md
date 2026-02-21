@@ -167,6 +167,14 @@ expense-tracker/
 - [x] Export functionality (CSV + Excel .xlsx)
 - [x] Manual category override (dropdown in transaction list)
 
+### Phase 4 (Enhanced)
+- [x] CLI tool (import/list/export/summary/backup)
+- [x] Enhanced deduplication (exact/same_period/cross_platform)
+- [x] Data traceability (import_id, original_source, duplicate_source)
+- [x] Refund detection and linking
+- [x] Bank statement parser
+- [x] S3 backup support
+
 ### Future (Post-MVP)
 - [ ] Auto-collection (web scraping / notification capture)
 - [ ] Budget alerts
@@ -178,9 +186,10 @@ expense-tracker/
 
 ```bash
 # 安装后使用
-expense-cli import <file> --source alipay|wechat|yunshanfu
-expense-cli list --category --source --month --limit
-expense-cli export --csv|--excel --output <file>
+expense-cli import <file> --source alipay|wechat|yunshanfu|bank
+expense-cli list --category --source --month --duplicate-type --refund-only --limit
+expense-cli export --csv|--excel --output <file> --start-date --end-date
 expense-cli summary --year --month
-expense-cli backup --output <file>
+expense-cli backup --output <file>                    # 本地备份
+expense-cli backup --target s3 --s3-uri s3://bucket/path  # S3备份
 ```
