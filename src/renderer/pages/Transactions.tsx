@@ -29,6 +29,10 @@ function isDuplicate(txn: Transaction): boolean {
   return txn.is_duplicate === 1 || txn.is_duplicate === true;
 }
 
+function isRefund(txn: Transaction): boolean {
+  return txn.is_refund === 1 || txn.is_refund === true;
+}
+
 export default function Transactions() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateReviewItem[]>([]);
@@ -266,6 +270,7 @@ export default function Transactions() {
               <th>备注</th>
               <th>分类</th>
               <th>来源</th>
+              <th>退款关联</th>
               <th>去重</th>
               <th>操作</th>
             </tr>
@@ -273,7 +278,7 @@ export default function Transactions() {
           <tbody>
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={10}>暂无数据</td>
+                <td colSpan={11}>暂无数据</td>
               </tr>
             )}
             {transactions.map((txn) => (
@@ -296,6 +301,7 @@ export default function Transactions() {
                   </select>
                 </td>
                 <td>{SOURCE_LABELS[txn.source] || txn.source}</td>
+                <td>{isRefund(txn) ? (txn.refund_of ? `原交易: ${txn.refund_of}` : '退款(未匹配)') : '-'}</td>
                 <td>{isDuplicate(txn) ? <span className="duplicate-badge">疑似重复</span> : '-'}</td>
                 <td>
                   <button onClick={() => handleDelete(txn.id)} className="btn-danger">

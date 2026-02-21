@@ -1,7 +1,7 @@
 import { Transaction } from '../shared/types';
 import { parseBillText } from './billText';
 
-type Source = 'alipay' | 'wechat' | 'yunshanfu';
+type Source = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
 type TesseractApi = {
   recognize: (

@@ -9,6 +9,7 @@ import initSqlJs from 'sql.js';
 import Papa from 'papaparse';
 import { Command } from 'commander';
 import { parseAlipay } from './parsers/alipay';
+import { parseBank } from './parsers/bank';
 import { parseWechat } from './parsers/wechat';
 import { parseYunshanfu } from './parsers/yunshanfu';
 import { type DuplicateType, type Transaction, type TransactionSource } from './shared/types';
@@ -53,8 +54,11 @@ async function openDatabase(): Promise<{ db: any; dbPath: string }> {
       type TEXT NOT NULL,
       counterparty TEXT,
       description TEXT,
+      bank_name TEXT,
       category TEXT DEFAULT '其他',
       notes TEXT,
+      is_refund INTEGER DEFAULT 0,
+      refund_of TEXT,
       is_duplicate INTEGER DEFAULT 0,
       duplicate_source TEXT,
       duplicate_type TEXT,
@@ -99,6 +103,9 @@ async function openDatabase(): Promise<{ db: any; dbPath: string }> {
   ensureColumn('original_source', 'TEXT');
   ensureColumn('duplicate_source', 'TEXT');
   ensureColumn('duplicate_type', 'TEXT');
+  ensureColumn('is_refund', 'INTEGER DEFAULT 0');
+  ensureColumn('refund_of', 'TEXT');
+  ensureColumn('bank_name', 'TEXT');
 
   return { db, dbPath };
 }
@@ -139,6 +146,8 @@ function parseTransactionsBySource(content: string, source: TransactionSource): 
   switch (source) {
     case 'alipay':
       return parseAlipay(content);
+    case 'bank':
+      return parseBank(content);
     case 'wechat':
       return parseWechat(content);
     case 'yunshanfu':
@@ -286,6 +295,94 @@ function findDuplicateCandidate(
   return {};
 }
 
+interface RefundCandidate {
+  id?: string;
+  date?: string;
+  counterparty?: string;
+  description?: string;
+}
+
+function isRefundTransaction(txn: Pick<Transaction, 'type' | 'is_refund'>): boolean {
+  return txn.is_refund === 1 || txn.is_refund === true;
+}
+
+function findRefundOriginalCandidate(db: any, txn: Transaction): string | null {
+  if (!isRefundTransaction(txn)) {
+    return null;
+  }
+
+  const stmt = db.prepare(
+    `SELECT id, date, counterparty, description
+     FROM transactions
+     WHERE type = 'expense'
+       AND COALESCE(is_refund, 0) = 0
+       AND ABS(amount - ?) < 0.005
+       AND date < ?
+       AND date >= date(?, '-30 day')
+     ORDER BY date DESC
+     LIMIT 200`
+  );
+  stmt.bind([txn.amount, txn.date, txn.date]);
+
+  const refundMerchant = merchantSignature(txn);
+  const refundSig = transactionSignature(txn);
+  let best: { id: string; score: number; date: string } | null = null;
+
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as RefundCandidate;
+    if (!row.id || !row.date) {
+      continue;
+    }
+
+    const candidateMerchant = merchantSignature(row);
+    let score = 0;
+    if (refundMerchant && candidateMerchant) {
+      score = normalizedSimilarity(refundMerchant, candidateMerchant);
+      if (!isTextSimilar(refundMerchant, candidateMerchant, 0.6)) {
+        continue;
+      }
+    } else {
+      const candidateSig = transactionSignature(row);
+      score = normalizedSimilarity(refundSig, candidateSig);
+      if (!isTextSimilar(refundSig, candidateSig, 0.6)) {
+        continue;
+      }
+    }
+
+    if (!best || score > best.score || (score === best.score && row.date > best.date)) {
+      best = { id: row.id, score, date: row.date };
+    }
+  }
+  stmt.free();
+
+  return best?.id || null;
+}
+
+function linkRefundTransactions(db: any, importId: string): void {
+  const refundRows = queryAll(
+    db,
+    `SELECT id, date, amount, type, counterparty, description, is_refund
+     FROM transactions
+     WHERE import_id = ?
+       AND COALESCE(is_refund, 0) = 1
+       AND refund_of IS NULL
+     ORDER BY date ASC, created_at ASC`,
+    [importId]
+  ) as unknown as Transaction[];
+
+  const now = new Date().toISOString();
+  const updateStmt = db.prepare('UPDATE transactions SET refund_of = ?, updated_at = ? WHERE id = ?');
+  try {
+    for (const refundTxn of refundRows) {
+      const targetId = findRefundOriginalCandidate(db, refundTxn);
+      if (!targetId) continue;
+      updateStmt.run([targetId, now, refundTxn.id]);
+    }
+  } finally {
+    updateStmt.free();
+  }
+}
+
 function insertTransactions(
   db: any,
   source: TransactionSource,
@@ -296,8 +393,8 @@ function insertTransactions(
   const importId = generateId();
   const stmt = db.prepare(
     `INSERT INTO transactions
-      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, category, notes, is_duplicate, duplicate_source, duplicate_type, merged_with, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, bank_name, category, notes, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type, merged_with, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   let inserted = 0;
@@ -331,8 +428,11 @@ function insertTransactions(
       txn.type,
       txn.counterparty || null,
       txn.description || null,
+      txn.bank_name || null,
       txn.category || '其他',
       txn.notes || null,
+      Number(txn.is_refund ?? 0),
+      txn.refund_of ?? null,
       Number(duplicate.pending ? 1 : 0),
       duplicate.pending?.duplicateSource || null,
       duplicate.pending?.duplicateType || null,
@@ -352,6 +452,8 @@ function insertTransactions(
     inserted,
     now,
   ]);
+
+  linkRefundTransactions(db, importId);
 
   return { inserted, exactMerged, samePeriodFlagged, crossPlatformFlagged };
 }
@@ -479,8 +581,8 @@ function writeXlsx(filePath: string, rows: Record<string, unknown>[]): void {
 }
 
 function parseSource(source: string): TransactionSource {
-  if (source !== 'alipay' && source !== 'wechat' && source !== 'yunshanfu') {
-    throw new Error('source 必须是 alipay|wechat|yunshanfu');
+  if (source !== 'alipay' && source !== 'wechat' && source !== 'yunshanfu' && source !== 'bank') {
+    throw new Error('source 必须是 alipay|wechat|yunshanfu|bank');
   }
   return source;
 }
@@ -495,7 +597,7 @@ program
 program
   .command('import <file>')
   .description('导入账单文件')
-  .requiredOption('--source <source>', '来源: alipay|wechat|yunshanfu')
+  .requiredOption('--source <source>', '来源: alipay|wechat|yunshanfu|bank')
   .action(async (file: string, options: { source: string }) => {
     const source = parseSource(options.source);
     const filePath = path.resolve(file);
@@ -522,11 +624,12 @@ program
   .command('list')
   .description('查询交易记录')
   .option('--category <category>', '按分类过滤')
-  .option('--source <source>', '按来源过滤: alipay|wechat|yunshanfu')
+  .option('--source <source>', '按来源过滤: alipay|wechat|yunshanfu|bank')
   .option('--month <month>', '按月份过滤，格式 YYYY-MM')
   .option('--duplicate-type <type>', '按重复类型过滤: exact|same_period|cross_platform')
+  .option('--refund-only', '仅显示退款记录')
   .option('--limit <n>', '结果条数', '20')
-  .action(async (options: { category?: string; source?: string; month?: string; duplicateType?: string; limit: string }) => {
+  .action(async (options: { category?: string; source?: string; month?: string; duplicateType?: string; refundOnly?: boolean; limit: string }) => {
     const limit = Number.parseInt(options.limit, 10);
     if (!Number.isInteger(limit) || limit <= 0) {
       throw new Error('limit 必须是正整数');
@@ -559,12 +662,15 @@ program
       where.push('duplicate_type = ?');
       params.push(options.duplicateType);
     }
+    if (options.refundOnly) {
+      where.push('COALESCE(is_refund, 0) = 1');
+    }
 
     const { db } = await openDatabase();
     try {
       const rows = queryAll(
         db,
-        `SELECT date, type, amount, source, original_source, counterparty, description, category, duplicate_source, duplicate_type
+        `SELECT date, type, amount, source, original_source, counterparty, description, category, is_refund, refund_of, duplicate_source, duplicate_type
          FROM transactions
          WHERE ${where.join(' AND ')}
          ORDER BY date DESC, created_at DESC
@@ -583,15 +689,40 @@ program
   .description('导出交易')
   .option('--csv', '导出 CSV')
   .option('--excel', '导出 Excel(.xlsx)')
+  .option('--start-date <date>', '开始日期，格式 YYYY-MM-DD')
+  .option('--end-date <date>', '结束日期，格式 YYYY-MM-DD')
   .requiredOption('--output <file>', '输出文件路径')
-  .action(async (options: { csv?: boolean; excel?: boolean; output: string }) => {
+  .action(async (options: { csv?: boolean; excel?: boolean; output: string; startDate?: string; endDate?: string }) => {
     if (Boolean(options.csv) === Boolean(options.excel)) {
       throw new Error('请二选一：--csv 或 --excel');
     }
 
+    const where: string[] = ['1=1'];
+    const params: (string | number)[] = [];
+
+    if (options.startDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(options.startDate)) {
+        throw new Error('start-date 格式必须是 YYYY-MM-DD');
+      }
+      where.push('date >= ?');
+      params.push(options.startDate);
+    }
+
+    if (options.endDate) {
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(options.endDate)) {
+        throw new Error('end-date 格式必须是 YYYY-MM-DD');
+      }
+      where.push('date <= ?');
+      params.push(options.endDate);
+    }
+
+    if (options.startDate && options.endDate && options.startDate > options.endDate) {
+      throw new Error('start-date 不能晚于 end-date');
+    }
+
     const { db } = await openDatabase();
     try {
-      const rows = toRows(queryAll(db, 'SELECT * FROM transactions ORDER BY date DESC, created_at DESC'));
+      const rows = toRows(queryAll(db, `SELECT * FROM transactions WHERE ${where.join(' AND ')} ORDER BY date DESC, created_at DESC`, params));
       const outPath = path.resolve(options.output);
       fs.mkdirSync(path.dirname(outPath), { recursive: true });
 
@@ -692,15 +823,49 @@ program
 program
   .command('backup')
   .description('备份数据库文件')
-  .requiredOption('--output <file>', '备份输出文件')
-  .action(async (options: { output: string }) => {
+  .option('--target <target>', '备份目标: local|s3', 'local')
+  .option('--output <file>', '本地备份输出文件 (target=local 时必填)')
+  .option('--s3-uri <uri>', 'S3 目标路径，例如 s3://my-bucket/backups/expenses.db')
+  .option('--profile <name>', 'AWS profile 名称')
+  .option('--endpoint-url <url>', 'S3 兼容服务 endpoint，例如 https://s3.amazonaws.com')
+  .action(async (options: { target: string; output?: string; s3Uri?: string; profile?: string; endpointUrl?: string }) => {
+    if (options.target !== 'local' && options.target !== 's3') {
+      throw new Error('target 必须是 local|s3');
+    }
+
     const { db, dbPath } = await openDatabase();
     try {
       saveDatabase(db, dbPath);
-      const outPath = path.resolve(options.output);
-      fs.mkdirSync(path.dirname(outPath), { recursive: true });
-      fs.copyFileSync(dbPath, outPath);
-      console.log(`backup=${outPath}`);
+
+      if (options.target === 'local') {
+        if (!options.output) {
+          throw new Error('target=local 时必须提供 --output');
+        }
+        const outPath = path.resolve(options.output);
+        fs.mkdirSync(path.dirname(outPath), { recursive: true });
+        fs.copyFileSync(dbPath, outPath);
+        console.log(`backup=${outPath}`);
+        return;
+      }
+
+      if (!options.s3Uri || !/^s3:\/\//.test(options.s3Uri)) {
+        throw new Error('target=s3 时必须提供合法的 --s3-uri (s3://...)');
+      }
+
+      const args = ['s3', 'cp', dbPath, options.s3Uri];
+      if (options.profile) {
+        args.push('--profile', options.profile);
+      }
+      if (options.endpointUrl) {
+        args.push('--endpoint-url', options.endpointUrl);
+      }
+
+      try {
+        execFileSync('aws', args, { stdio: 'pipe' });
+      } catch {
+        throw new Error('S3 备份失败：请确认已安装并配置 aws cli，且具备目标桶写入权限');
+      }
+      console.log(`backup=${options.s3Uri}`);
     } finally {
       db.close();
     }

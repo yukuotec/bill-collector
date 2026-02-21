@@ -3,7 +3,7 @@ import { DuplicateReviewItem, Summary, SummaryQuery, TransactionListResponse, Tr
 
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (filters: { name: string; extensions: string[] }[]) => ipcRenderer.invoke('select-file', filters),
-  importCSV: (filePath: string, source: 'alipay' | 'wechat' | 'yunshanfu', options?: { dryRun?: boolean; previewLimit?: number }) =>
+  importCSV: (filePath: string, source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank', options?: { dryRun?: boolean; previewLimit?: number }) =>
     ipcRenderer.invoke('import-csv', filePath, source, options),
   getTransactions: (filters?: TransactionQuery): Promise<TransactionListResponse> => ipcRenderer.invoke('get-transactions', filters),
   getSummary: (query?: SummaryQuery): Promise<Summary> => ipcRenderer.invoke('get-summary', query),

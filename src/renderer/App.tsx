@@ -10,7 +10,7 @@ declare global {
       selectFile: (filters: { name: string; extensions: string[] }[]) => Promise<string | null>;
       importCSV: (
         filePath: string,
-        source: 'alipay' | 'wechat' | 'yunshanfu',
+        source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank',
         options?: { dryRun?: boolean; previewLimit?: number }
       ) => Promise<{
         importId: string | null;

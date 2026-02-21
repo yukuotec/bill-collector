@@ -17,6 +17,10 @@ export function parseAmount(amountStr: string): number {
   return Math.abs(Number.parseFloat(match[0]));
 }
 
+export function isRefundText(value?: string): boolean {
+  return /(退款|已退款|退回|返还|返款|退费|冲正|\brefund\b)/i.test(value || '');
+}
+
 export function inferType(options: {
   typeText?: string;
   expenseField?: string;
@@ -24,6 +28,7 @@ export function inferType(options: {
   amountText?: string;
 }): 'expense' | 'income' {
   const typeText = options.typeText || '';
+  if (isRefundText(typeText)) return 'income';
   if (typeText.includes('收入')) return 'income';
   if (typeText.includes('支出')) return 'expense';
   if (options.expenseField && !options.incomeField) return 'expense';

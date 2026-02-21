@@ -1,6 +1,6 @@
 import { DragEvent, useMemo, useState } from 'react';
 
-type Source = 'alipay' | 'wechat' | 'yunshanfu';
+type Source = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
 type ImportResult = {
   importId: string | null;
@@ -23,6 +23,7 @@ const SOURCE_LABELS: Record<Source, string> = {
   alipay: '支付宝',
   wechat: '微信',
   yunshanfu: '云闪付',
+  bank: '银行账单',
 };
 
 function getFileName(filePath: string): string {

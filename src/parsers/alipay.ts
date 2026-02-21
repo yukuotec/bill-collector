@@ -1,7 +1,7 @@
 import Papa from 'papaparse';
 import { Transaction } from '../shared/types';
 import { categorize } from '../shared/constants';
-import { generateId, inferType, normalizeDate, parseAmount } from './utils';
+import { generateId, inferType, isRefundText, normalizeDate, parseAmount } from './utils';
 
 function detectHeaderLine(lines: string[]): number {
   return lines.findIndex((line) => {
@@ -50,7 +50,7 @@ export function parseAlipay(content: string): Transaction[] {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
     const amount = parseAmount(amountStr);
-    const refundLike = /(退款|退回|返还|返款|退费|冲正)/.test(`${typeStr}${tradeCategory}${status}${description}`);
+    const refundLike = isRefundText(`${typeStr} ${tradeCategory} ${status} ${description}`);
     const transferLike =
       (flow.includes('不计收支') && !refundLike) ||
       /中性/.test(typeStr) ||
@@ -73,6 +73,7 @@ export function parseAlipay(content: string): Transaction[] {
       date,
       amount: Math.abs(amount),
       type,
+      is_refund: refundLike ? 1 : 0,
       counterparty,
       description,
       category: categorize(description || counterparty),

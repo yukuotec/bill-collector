@@ -36,8 +36,11 @@ function ensureSchema(): void {
       type TEXT NOT NULL,
       counterparty TEXT,
       description TEXT,
+      bank_name TEXT,
       category TEXT DEFAULT '其他',
       notes TEXT,
+      is_refund INTEGER DEFAULT 0,
+      refund_of TEXT,
       is_duplicate INTEGER DEFAULT 0,
       duplicate_source TEXT,
       duplicate_type TEXT,
@@ -82,6 +85,9 @@ function ensureSchema(): void {
   ensureColumn('original_source', 'TEXT');
   ensureColumn('duplicate_source', 'TEXT');
   ensureColumn('duplicate_type', 'TEXT');
+  ensureColumn('is_refund', 'INTEGER DEFAULT 0');
+  ensureColumn('refund_of', 'TEXT');
+  ensureColumn('bank_name', 'TEXT');
 
   const now = new Date().toISOString();
   database.run(
@@ -132,8 +138,8 @@ export function insertTransactions(transactions: Transaction[]): number {
   const database = getDatabase();
   const stmt = database.prepare(
     `INSERT INTO transactions
-      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, category, notes, is_duplicate, duplicate_source, duplicate_type, merged_with, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, bank_name, category, notes, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type, merged_with, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   let inserted = 0;
@@ -150,8 +156,11 @@ export function insertTransactions(transactions: Transaction[]): number {
         txn.type,
         txn.counterparty || null,
         txn.description || null,
+        txn.bank_name || null,
         txn.category || '其他',
         txn.notes || null,
+        Number(txn.is_refund ?? 0),
+        txn.refund_of ?? null,
         Number(txn.is_duplicate ?? 0),
         txn.duplicate_source ?? null,
         txn.duplicate_type ?? null,

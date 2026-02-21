@@ -1,6 +1,6 @@
 export interface Transaction {
   id: string;
-  source: 'alipay' | 'wechat' | 'yunshanfu';
+  source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
   import_id?: string | null;
   original_source?: string;
   original_id?: string;
@@ -9,8 +9,11 @@ export interface Transaction {
   type: 'expense' | 'income' | 'transfer';
   counterparty?: string;
   description?: string;
+  bank_name?: string;
   category?: string;
   notes?: string;
+  is_refund?: boolean | number;
+  refund_of?: string | null;
   is_duplicate?: boolean | number;
   duplicate_source?: string | null;
   duplicate_type?: DuplicateType | null;
@@ -31,7 +34,7 @@ export interface DuplicateReviewItem extends Transaction {
 
 export interface ImportRecord {
   id: string;
-  source: 'alipay' | 'wechat' | 'yunshanfu';
+  source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
   file_name?: string;
   record_count: number;
   imported_at: string;
@@ -70,7 +73,7 @@ export interface Summary {
   availableYears: number[];
 }
 
-export type TransactionSource = 'alipay' | 'wechat' | 'yunshanfu';
+export type TransactionSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 export type TransactionType = 'expense' | 'income' | 'transfer';
 export type DuplicateType = 'exact' | 'same_period' | 'cross_platform';
 export type TransactionSortBy = 'date' | 'amount';
@@ -83,6 +86,7 @@ export interface TransactionQuery {
   startDate?: string;
   endDate?: string;
   duplicateType?: DuplicateType;
+  refundOnly?: boolean;
   q?: string;
   page?: number;
   pageSize?: number;

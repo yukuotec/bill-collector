@@ -2,7 +2,7 @@ import fs from 'fs';
 import { Transaction } from '../shared/types';
 import { parseBillText } from './billText';
 
-type Source = 'alipay' | 'wechat' | 'yunshanfu';
+type Source = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
 export async function parsePdfBill(filePath: string, source: Source): Promise<Transaction[]> {
   let pdfParse: ((buffer: Buffer) => Promise<{ text: string }>) | undefined;

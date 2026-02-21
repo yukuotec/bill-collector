@@ -2,7 +2,7 @@ import { Transaction } from '../shared/types';
 import { categorize } from '../shared/constants';
 import { generateId, normalizeDate, parseAmount } from './utils';
 
-type Source = 'alipay' | 'wechat' | 'yunshanfu';
+type Source = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
 const DATE_PATTERN = /(20\d{2}[\/-年.]\d{1,2}[\/-月.]\d{1,2}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?)/;
 const AMOUNT_PATTERN = /[-+]?\s*[¥￥]?\d[\d,]*(?:\.\d{1,2})?/g;

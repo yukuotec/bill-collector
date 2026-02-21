@@ -7,14 +7,15 @@ import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
 import { getDatabase, getDatabasePath, insertTransactions, saveDatabase } from './database';
 import { parseAlipay } from '../parsers/alipay';
+import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
 import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { DuplicateReviewItem, DuplicateType, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { DuplicateReviewItem, DuplicateType, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
 
-type Source = 'alipay' | 'wechat' | 'yunshanfu';
+type Source = TransactionSource;
 type SupportedImportExt = '.csv' | '.xlsx' | '.pdf' | '.html' | '.htm' | '.png';
 
 interface ImportCsvOptions {
@@ -50,6 +51,13 @@ interface DuplicateMatch {
   duplicateSource: string;
 }
 
+interface RefundCandidate {
+  id?: string;
+  date?: string;
+  counterparty?: string;
+  description?: string;
+}
+
 function generateId(): string {
   return Date.now().toString(36) + Math.random().toString(36).slice(2);
 }
@@ -58,6 +66,8 @@ function parseTransactionsBySource(content: string, source: Source): Transaction
   switch (source) {
     case 'alipay':
       return parseAlipay(content);
+    case 'bank':
+      return parseBank(content);
     case 'wechat':
       return parseWechat(content);
     case 'yunshanfu':
@@ -73,7 +83,7 @@ function decodeCsvCandidates(buffer: Buffer): string[] {
 
   const shouldTryGb18030 =
     utf8.includes('\ufffd') ||
-    !/(交易时间|交易创建时间|交易日期|金额|收\/支|交易类型|支付宝|微信|云闪付)/.test(utf8);
+    !/(交易时间|交易创建时间|交易日期|金额|收\/支|交易类型|支付宝|微信|云闪付|借方|贷方|balance|amount)/i.test(utf8);
 
   if (!shouldTryGb18030) {
     return candidates;
@@ -418,6 +428,84 @@ function findDuplicateCandidate(txn: Transaction): { exactId?: string; pending?:
   return {};
 }
 
+function findRefundOriginalCandidate(txn: Transaction): string | null {
+  if (!(txn.is_refund === 1 || txn.is_refund === true)) {
+    return null;
+  }
+
+  const db = getDatabase();
+  const stmt = db.prepare(
+    `SELECT id, date, counterparty, description
+     FROM transactions
+     WHERE type = 'expense'
+       AND COALESCE(is_refund, 0) = 0
+       AND ABS(amount - ?) < 0.005
+       AND date < ?
+       AND date >= date(?, '-30 day')
+     ORDER BY date DESC
+     LIMIT 200`
+  );
+  stmt.bind([txn.amount, txn.date, txn.date]);
+
+  const refundMerchant = merchantSignature(txn);
+  const refundSig = transactionSignature(txn);
+  let best: { id: string; score: number; date: string } | null = null;
+
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as RefundCandidate;
+    if (!row.id || !row.date) {
+      continue;
+    }
+
+    const candidateMerchant = merchantSignature(row);
+    let score = 0;
+    if (refundMerchant && candidateMerchant) {
+      score = normalizedSimilarity(refundMerchant, candidateMerchant);
+      if (!isTextSimilar(refundMerchant, candidateMerchant, 0.6)) {
+        continue;
+      }
+    } else {
+      const candidateSig = transactionSignature(row);
+      score = normalizedSimilarity(refundSig, candidateSig);
+      if (!isTextSimilar(refundSig, candidateSig, 0.6)) {
+        continue;
+      }
+    }
+
+    if (!best || score > best.score || (score === best.score && row.date > best.date)) {
+      best = { id: row.id, score, date: row.date };
+    }
+  }
+  stmt.free();
+
+  return best?.id || null;
+}
+
+function linkRefundTransactions(importId: string): void {
+  const db = getDatabase();
+  const refundRows = queryAll(
+    `SELECT id, date, amount, type, counterparty, description, is_refund
+     FROM transactions
+     WHERE import_id = ?
+       AND COALESCE(is_refund, 0) = 1
+       AND refund_of IS NULL
+     ORDER BY date ASC, created_at ASC`,
+    [importId]
+  ) as unknown as Transaction[];
+
+  const now = new Date().toISOString();
+  const stmt = db.prepare('UPDATE transactions SET refund_of = ?, updated_at = ? WHERE id = ?');
+  try {
+    for (const refundTxn of refundRows) {
+      const targetId = findRefundOriginalCandidate(refundTxn);
+      if (!targetId) continue;
+      stmt.run([targetId, now, refundTxn.id]);
+    }
+  } finally {
+    stmt.free();
+  }
+}
+
 function xmlEscape(value: unknown): string {
   return String(value ?? '')
     .replace(/&/g, '&amp;')
@@ -472,6 +560,7 @@ function writeXlsx(filePath: string, rows: Record<string, unknown>[]): void {
     'source',
     'counterparty',
     'description',
+    'bank_name',
     'category',
     'notes',
     'original_id',
@@ -615,6 +704,8 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
           import_id: importId,
           original_source: txn.original_source || txn.source,
           category: txn.category || '其他',
+          is_refund: Number(txn.is_refund ?? 0),
+          refund_of: txn.refund_of ?? null,
           is_duplicate: duplicate.pending ? 1 : 0,
           duplicate_source: duplicate.pending?.duplicateSource || null,
           duplicate_type: duplicate.pending?.duplicateType || null,
@@ -633,6 +724,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
         result.inserted,
         now,
       ]);
+      linkRefundTransactions(importId);
       saveDatabase();
 
       result.importId = importId;
@@ -671,6 +763,9 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     if (filters?.duplicateType) {
       where.push('duplicate_type = ?');
       params.push(filters.duplicateType);
+    }
+    if (filters?.refundOnly) {
+      where.push('COALESCE(is_refund, 0) = 1');
     }
     if (filters?.q) {
       where.push('(description LIKE ? OR counterparty LIKE ? OR notes LIKE ?)');

@@ -1,7 +1,7 @@
 import Papa from 'papaparse';
 import { Transaction } from '../shared/types';
 import { categorize } from '../shared/constants';
-import { generateId, inferType, normalizeDate, parseAmount } from './utils';
+import { generateId, inferType, isRefundText, normalizeDate, parseAmount } from './utils';
 
 function detectHeaderLine(lines: string[]): number {
   return lines.findIndex((line) => {
@@ -47,18 +47,21 @@ export function parseYunshanfu(content: string): Transaction[] {
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
 
     const amount = parseAmount(amountStr);
+    const refundLike = isRefundText(`${typeStr} ${flow} ${description}`);
     const transferLike =
-      flow.includes('不计收支') ||
+      (flow.includes('不计收支') && !refundLike) ||
       /中性/.test(typeStr) ||
       (/转账/.test(typeStr) && !flow.includes('收入') && !flow.includes('支出'));
-    const type = transferLike
-      ? 'transfer'
-      : inferType({
-          typeText: `${typeStr}${flow}`,
-          expenseField: flow.includes('支出') ? amountStr : row['支出'],
-          incomeField: flow.includes('收入') ? amountStr : row['收入'],
-          amountText: amountStr,
-        });
+    const type = refundLike
+      ? 'income'
+      : transferLike
+        ? 'transfer'
+        : inferType({
+            typeText: `${typeStr}${flow}`,
+            expenseField: flow.includes('支出') ? amountStr : row['支出'],
+            incomeField: flow.includes('收入') ? amountStr : row['收入'],
+            amountText: amountStr,
+          });
 
     transactions.push({
       id: generateId(),
@@ -67,6 +70,7 @@ export function parseYunshanfu(content: string): Transaction[] {
       date,
       amount: Math.abs(amount),
       type,
+      is_refund: refundLike ? 1 : 0,
       counterparty,
       description,
       category: categorize(description || counterparty),

@@ -1,6 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { parseAlipay } = require('../dist/parsers/alipay');
+const { parseBank } = require('../dist/parsers/bank');
 const { parseWechat } = require('../dist/parsers/wechat');
 const { parseYunshanfu } = require('../dist/parsers/yunshanfu');
 
@@ -22,6 +23,7 @@ test('parseAlipay should parse real-world style CSV with preface and mixed trans
   assert.equal(rows[0].amount, 18.5);
   assert.equal(rows[0].type, 'expense');
   assert.equal(rows[1].type, 'income');
+  assert.equal(rows[1].is_refund, 1);
   assert.equal(rows[2].type, 'transfer');
 });
 
@@ -36,6 +38,7 @@ test('parseAlipay should treat refund rows with 不计收支 as income', () => {
   const rows = parseAlipay(csv);
   assert.equal(rows.length, 2);
   assert.equal(rows[0].type, 'income');
+  assert.equal(rows[0].is_refund, 1);
   assert.equal(rows[0].amount, 57.87);
   assert.equal(rows[1].type, 'expense');
 });
@@ -64,6 +67,18 @@ test('parseWechat should find header after summary lines and infer flow type fro
   assert.equal(rows[0].original_id, '420000001');
 });
 
+test('parseWechat should mark English refund keywords as refund income', () => {
+  const csv = [
+    '交易时间,交易类型,交易对方,商品,收/支,金额(元),当前状态,交易单号,商户单号,备注',
+    '2026-02-05 11:20:00,Payment refund,麦当劳,order refund,不计收支,23.00,已退款,420000099,M20260205999,',
+  ].join('\n');
+
+  const rows = parseWechat(csv);
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].type, 'income');
+  assert.equal(rows[0].is_refund, 1);
+});
+
 test('parseYunshanfu should parse header aliases and ignore non-data rows', () => {
   const csv = [
     '云闪付交易明细',
@@ -82,4 +97,34 @@ test('parseYunshanfu should parse header aliases and ignore non-data rows', () =
   assert.equal(rows[1].type, 'income');
   assert.equal(rows[2].type, 'transfer');
   assert.equal(rows[2].original_id, 'YSF0003');
+});
+
+test('parseBank should parse common bank CSV aliases and infer income/expense', () => {
+  const csv = [
+    'Bank Name,Date,Description,Counterparty,Amount,Balance,Transaction ID',
+    'ABC Bank,2026-02-01 10:00:00,Salary,Employer,8000.00,10000.00,B001',
+    'ABC Bank,2026-02-02 12:20:00,Lunch,Cafe,-35.50,9964.50,B002',
+  ].join('\n');
+
+  const rows = parseBank(csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].source, 'bank');
+  assert.equal(rows[0].type, 'income');
+  assert.equal(rows[0].bank_name, 'ABC Bank');
+  assert.equal(rows[1].type, 'expense');
+  assert.equal(rows[1].amount, 35.5);
+});
+
+test('parseBank should parse debit/credit split columns', () => {
+  const csv = [
+    '交易日期,摘要,交易对方,借方金额,贷方金额,余额,银行名称,交易流水号',
+    '2026/02/03,转账收入,张三,,500.00,10464.50,招商银行,CN001',
+    '2026/02/04,电费扣款,国家电网,120.00,,10344.50,招商银行,CN002',
+  ].join('\n');
+
+  const rows = parseBank(csv);
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].type, 'income');
+  assert.equal(rows[1].type, 'expense');
+  assert.equal(rows[1].bank_name, '招商银行');
 });
