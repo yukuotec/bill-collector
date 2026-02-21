@@ -12,10 +12,10 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { DuplicateReviewItem, DuplicateType, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
 
 type Source = 'alipay' | 'wechat' | 'yunshanfu';
-type SupportedImportExt = '.csv' | '.pdf' | '.html' | '.htm' | '.png';
+type SupportedImportExt = '.csv' | '.xlsx' | '.pdf' | '.html' | '.htm' | '.png';
 
 interface ImportCsvOptions {
   dryRun?: boolean;
@@ -28,16 +28,26 @@ interface ImportCsvResult {
   inserted: number;
   exactMerged: number;
   fuzzyFlagged: number;
+  exactCount: number;
+  samePeriodCount: number;
+  crossPlatformCount: number;
   errors: string[];
   preview: Array<Pick<Transaction, 'date' | 'type' | 'amount' | 'counterparty' | 'description' | 'category'>>;
 }
 
 interface DuplicateCandidate {
   id: string;
+  source: Source;
   date: string;
   amount: number;
   counterparty?: string;
   description?: string;
+}
+
+interface DuplicateMatch {
+  targetId: string;
+  duplicateType: Exclude<DuplicateType, 'exact'>;
+  duplicateSource: string;
 }
 
 function generateId(): string {
@@ -81,6 +91,126 @@ function decodeCsvCandidates(buffer: Buffer): string[] {
   return candidates;
 }
 
+function decodeXmlText(value: string): string {
+  const decodeEntity = (num: number): string => {
+    if (!Number.isInteger(num) || num < 0 || num > 0x10ffff) return '';
+    try {
+      return String.fromCodePoint(num);
+    } catch {
+      return '';
+    }
+  };
+
+  return value
+    .replace(/&#(\d+);/g, (_, dec) => decodeEntity(Number(dec)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, hex) => decodeEntity(Number.parseInt(hex, 16)))
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+function columnRefToIndex(cellRef: string): number {
+  const col = cellRef.replace(/\d+$/, '');
+  let result = 0;
+  for (let i = 0; i < col.length; i += 1) {
+    result = result * 26 + (col.charCodeAt(i) - 64);
+  }
+  return Math.max(0, result - 1);
+}
+
+function readZipEntry(filePath: string, entryPath: string): string {
+  return execFileSync('unzip', ['-p', filePath, entryPath], { encoding: 'utf-8' });
+}
+
+function getFirstWorksheetPath(filePath: string): string {
+  const entries = execFileSync('unzip', ['-Z1', filePath], { encoding: 'utf-8' })
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+  const firstSheet = entries.find((entry) => /^xl\/worksheets\/.+\.xml$/i.test(entry));
+  if (!firstSheet) {
+    throw new Error('Excel 文件中未找到工作表');
+  }
+  return firstSheet;
+}
+
+function parseSharedStrings(sharedStringsXml: string): string[] {
+  const siMatches = sharedStringsXml.match(/<si\b[\s\S]*?<\/si>/g) || [];
+  return siMatches.map((si) => {
+    const textMatches = si.match(/<t\b[^>]*>[\s\S]*?<\/t>/g) || [];
+    const text = textMatches
+      .map((segment) => {
+        const matched = segment.match(/<t\b[^>]*>([\s\S]*?)<\/t>/);
+        return decodeXmlText(matched?.[1] || '');
+      })
+      .join('');
+    return text;
+  });
+}
+
+function getCellValue(cellXml: string, sharedStrings: string[]): string {
+  const attrMatch = cellXml.match(/^<c\b([^>]*)/);
+  const attrs = attrMatch?.[1] || '';
+  const typeMatch = attrs.match(/\bt="([^"]+)"/);
+  const cellType = typeMatch?.[1] || '';
+
+  if (cellType === 'inlineStr') {
+    const textMatches = cellXml.match(/<t\b[^>]*>([\s\S]*?)<\/t>/g) || [];
+    return textMatches
+      .map((segment) => {
+        const matched = segment.match(/<t\b[^>]*>([\s\S]*?)<\/t>/);
+        return decodeXmlText(matched?.[1] || '');
+      })
+      .join('');
+  }
+
+  const vMatch = cellXml.match(/<v\b[^>]*>([\s\S]*?)<\/v>/);
+  const raw = decodeXmlText(vMatch?.[1] || '');
+  if (cellType === 's') {
+    const idx = Number.parseInt(raw, 10);
+    return Number.isInteger(idx) && idx >= 0 && idx < sharedStrings.length ? sharedStrings[idx] : '';
+  }
+  return raw;
+}
+
+function convertXlsxToCsv(filePath: string): string {
+  const worksheetPath = getFirstWorksheetPath(filePath);
+  const sheetXml = readZipEntry(filePath, worksheetPath);
+
+  let sharedStrings: string[] = [];
+  try {
+    const sharedStringsXml = readZipEntry(filePath, 'xl/sharedStrings.xml');
+    sharedStrings = parseSharedStrings(sharedStringsXml);
+  } catch {
+    sharedStrings = [];
+  }
+
+  const rows: string[][] = [];
+  const rowMatches = sheetXml.match(/<row\b[\s\S]*?<\/row>/g) || [];
+  for (const rowXml of rowMatches) {
+    const rowValues: string[] = [];
+    const cellMatches = rowXml.match(/<c\b[^>]*(?:\/>|>[\s\S]*?<\/c>)/g) || [];
+    for (const cellXml of cellMatches) {
+      const attrMatch = cellXml.match(/^<c\b([^>]*)/);
+      const attrs = attrMatch?.[1] || '';
+      const ref = attrs.match(/\br="([^"]+)"/)?.[1];
+      const colIdx = ref ? columnRefToIndex(ref) : rowValues.length;
+      rowValues[colIdx] = getCellValue(cellXml, sharedStrings);
+    }
+
+    for (let i = 0; i < rowValues.length; i += 1) {
+      if (typeof rowValues[i] !== 'string') {
+        rowValues[i] = '';
+      }
+    }
+    rows.push(rowValues);
+  }
+
+  return Papa.unparse(rows, { skipEmptyLines: false });
+}
+
 async function parseTransactionsFromFile(filePath: string, source: Source): Promise<Transaction[]> {
   const ext = path.extname(filePath).toLowerCase() as SupportedImportExt;
 
@@ -102,6 +232,10 @@ async function parseTransactionsFromFile(filePath: string, source: Source): Prom
       }
 
       return fallback;
+    }
+    case '.xlsx': {
+      const csvContent = convertXlsxToCsv(filePath);
+      return parseTransactionsBySource(csvContent, source);
     }
     case '.pdf':
       return parsePdfBill(filePath, source);
@@ -165,6 +299,39 @@ function levenshtein(a: string, b: string): number {
   return dp[b.length];
 }
 
+function normalizedSimilarity(a: string, b: string): number {
+  if (!a.length || !b.length) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.9;
+
+  const dist = levenshtein(a, b);
+  const maxLen = Math.max(a.length, b.length);
+  return maxLen === 0 ? 1 : 1 - dist / maxLen;
+}
+
+function isTextSimilar(a: string, b: string, threshold = 0.72): boolean {
+  return normalizedSimilarity(a, b) >= threshold;
+}
+
+function normalizeMerchantName(value?: string): string {
+  const cleaned = (value || '')
+    .toLowerCase()
+    .replace(/[（(【\[].*?[）)】\]]/g, ' ')
+    .replace(/\+?\d[\d\s-]{6,}\d/g, ' ')
+    .replace(/(?:地址|addr|address)[:：]?\s*[^\s,，;；]*/gi, ' ')
+    .replace(/[0-9一二三四五六七八九十百千]+(?:号|栋|幢|单元|室|楼|层)/g, ' ')
+    .replace(/[^\p{L}\p{N}\s]+/gu, ' ')
+    .trim();
+
+  const tokens = cleaned.split(/\s+/).filter(Boolean);
+  return tokens.filter((token) => !/(省|市|区|县|镇|乡|村|路|街|巷|道)$/.test(token)).join('');
+}
+
+function merchantSignature(txn: Pick<Transaction, 'counterparty' | 'description'>): string {
+  const base = txn.counterparty || txn.description || '';
+  return normalizeMerchantName(base);
+}
+
 function queryAll(sql: string, params: (string | number)[] = []): Record<string, unknown>[] {
   const db = getDatabase();
   const stmt = db.prepare(sql);
@@ -178,44 +345,77 @@ function queryAll(sql: string, params: (string | number)[] = []): Record<string,
   return results;
 }
 
-function findDuplicateCandidate(txn: Transaction): { exactId?: string; fuzzyId?: string } {
+function findDuplicateCandidate(txn: Transaction): { exactId?: string; pending?: DuplicateMatch } {
   const db = getDatabase();
   const stmt = db.prepare(
-    `SELECT id, date, amount, counterparty, description
+    `SELECT id, source, date, amount, counterparty, description
      FROM transactions
      WHERE ABS(amount - ?) < 0.005
-       AND date BETWEEN date(?, '-1 day') AND date(?, '+1 day')
+       AND date BETWEEN date(?, '-3 day') AND date(?, '+3 day')
      LIMIT 100`
   );
   stmt.bind([txn.amount, txn.date, txn.date]);
 
   const inputSig = transactionSignature(txn);
   const inputHasSignature = hasTextSignature(txn);
-  let fuzzyBest: { id: string; distance: number } | null = null;
+  const inputMerchantSig = merchantSignature(txn);
+  let samePeriodBest: { id: string; score: number; source: string } | null = null;
+  let crossPlatformBest: { id: string; score: number; source: string } | null = null;
 
   while (stmt.step()) {
     const candidate = stmt.getAsObject() as unknown as DuplicateCandidate;
     const isSameDay = candidate.date === txn.date;
     const candidateSig = transactionSignature(candidate);
     const candidateHasSignature = hasTextSignature(candidate);
+    const sameSource = candidate.source === txn.source;
 
     if (isSameDay && inputHasSignature && candidateHasSignature && candidateSig === inputSig) {
       stmt.free();
       return { exactId: candidate.id };
     }
 
-    if (!inputHasSignature || !candidateHasSignature) {
+    if (sameSource && inputHasSignature && candidateHasSignature) {
+      const score = normalizedSimilarity(inputSig, candidateSig);
+      if (isTextSimilar(inputSig, candidateSig) && (!samePeriodBest || score > samePeriodBest.score)) {
+        samePeriodBest = { id: candidate.id, score, source: candidate.source };
+      }
       continue;
     }
 
-    const dist = levenshtein(inputSig, candidateSig);
-    if (dist <= 3 && (!fuzzyBest || dist < fuzzyBest.distance)) {
-      fuzzyBest = { id: candidate.id, distance: dist };
+    if (!sameSource && inputMerchantSig.length > 0) {
+      const candidateMerchantSig = merchantSignature(candidate);
+      if (!candidateMerchantSig.length) {
+        continue;
+      }
+      const score = normalizedSimilarity(inputMerchantSig, candidateMerchantSig);
+      if (isTextSimilar(inputMerchantSig, candidateMerchantSig, 0.7) && (!crossPlatformBest || score > crossPlatformBest.score)) {
+        crossPlatformBest = { id: candidate.id, score, source: candidate.source };
+      }
     }
   }
 
   stmt.free();
-  return fuzzyBest ? { fuzzyId: fuzzyBest.id } : {};
+  if (samePeriodBest) {
+    return {
+      pending: {
+        targetId: samePeriodBest.id,
+        duplicateType: 'same_period',
+        duplicateSource: samePeriodBest.source,
+      },
+    };
+  }
+
+  if (crossPlatformBest) {
+    return {
+      pending: {
+        targetId: crossPlatformBest.id,
+        duplicateType: 'cross_platform',
+        duplicateSource: crossPlatformBest.source,
+      },
+    };
+  }
+
+  return {};
 }
 
 function xmlEscape(value: unknown): string {
@@ -352,7 +552,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('select-file', async (_, filters: { name: string; extensions: string[] }[]) => {
     const result = await dialog.showOpenDialog({
       properties: ['openFile'],
-      filters: filters.length > 0 ? filters : [{ name: '账单文件', extensions: ['csv', 'pdf', 'html', 'png'] }],
+      filters: filters.length > 0 ? filters : [{ name: '账单文件', extensions: ['csv', 'xlsx', 'pdf', 'html', 'png'] }],
     });
 
     if (result.canceled || result.filePaths.length === 0) {
@@ -369,6 +569,9 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       inserted: 0,
       exactMerged: 0,
       fuzzyFlagged: 0,
+      exactCount: 0,
+      samePeriodCount: 0,
+      crossPlatformCount: 0,
       errors: [],
       preview: [],
     };
@@ -393,19 +596,29 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
         const duplicate = findDuplicateCandidate(txn);
         if (duplicate.exactId) {
           result.exactMerged += 1;
+          result.exactCount += 1;
           continue;
         }
 
-        if (duplicate.fuzzyId) {
+        if (duplicate.pending) {
           result.fuzzyFlagged += 1;
+          if (duplicate.pending.duplicateType === 'same_period') {
+            result.samePeriodCount += 1;
+          } else {
+            result.crossPlatformCount += 1;
+          }
         }
 
         toInsert.push({
           ...txn,
           id: txn.id || generateId(),
+          import_id: importId,
+          original_source: txn.original_source || txn.source,
           category: txn.category || '其他',
-          is_duplicate: duplicate.fuzzyId ? 1 : 0,
-          merged_with: duplicate.fuzzyId || null,
+          is_duplicate: duplicate.pending ? 1 : 0,
+          duplicate_source: duplicate.pending?.duplicateSource || null,
+          duplicate_type: duplicate.pending?.duplicateType || null,
+          merged_with: duplicate.pending?.targetId || null,
           created_at: now,
           updated_at: now,
         });
@@ -454,6 +667,10 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     if (filters?.endDate) {
       where.push('date <= ?');
       params.push(filters.endDate);
+    }
+    if (filters?.duplicateType) {
+      where.push('duplicate_type = ?');
+      params.push(filters.duplicateType);
     }
     if (filters?.q) {
       where.push('(description LIKE ? OR counterparty LIKE ? OR notes LIKE ?)');
@@ -514,7 +731,10 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     const now = new Date().toISOString();
 
     if (action === 'keep') {
-      db.run('UPDATE transactions SET is_duplicate = 0, merged_with = NULL, updated_at = ? WHERE id = ?', [now, id]);
+      db.run(
+        'UPDATE transactions SET is_duplicate = 0, duplicate_source = NULL, duplicate_type = NULL, merged_with = NULL, updated_at = ? WHERE id = ?',
+        [now, id]
+      );
       saveDatabase();
       return true;
     }
@@ -526,7 +746,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     let targetId = typeof txn.merged_with === 'string' ? txn.merged_with : '';
     if (!targetId) {
       const candidate = findDuplicateCandidate(txn);
-      targetId = candidate.exactId || candidate.fuzzyId || '';
+      targetId = candidate.exactId || candidate.pending?.targetId || '';
     }
 
     if (!targetId) return false;

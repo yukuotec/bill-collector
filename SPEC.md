@@ -171,3 +171,16 @@ expense-tracker/
 - [ ] Auto-collection (web scraping / notification capture)
 - [ ] Budget alerts
 - [ ] Multi-currency support
+
+---
+
+## CLI Commands
+
+```bash
+# 安装后使用
+expense-cli import <file> --source alipay|wechat|yunshanfu
+expense-cli list --category --source --month --limit
+expense-cli export --csv|--excel --output <file>
+expense-cli summary --year --month
+expense-cli backup --output <file>
+```

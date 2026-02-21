@@ -28,6 +28,8 @@ function ensureSchema(): void {
     CREATE TABLE IF NOT EXISTS transactions (
       id TEXT PRIMARY KEY,
       source TEXT NOT NULL,
+      import_id TEXT,
+      original_source TEXT,
       original_id TEXT,
       date TEXT NOT NULL,
       amount REAL NOT NULL,
@@ -37,6 +39,8 @@ function ensureSchema(): void {
       category TEXT DEFAULT '其他',
       notes TEXT,
       is_duplicate INTEGER DEFAULT 0,
+      duplicate_source TEXT,
+      duplicate_type TEXT,
       merged_with TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
@@ -56,6 +60,28 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_duplicate_type ON transactions(duplicate_type)');
+
+  const columnsStmt = database.prepare("PRAGMA table_info('transactions')");
+  const existingColumns = new Set<string>();
+  while (columnsStmt.step()) {
+    const row = columnsStmt.getAsObject() as { name?: string };
+    if (typeof row.name === 'string') {
+      existingColumns.add(row.name);
+    }
+  }
+  columnsStmt.free();
+
+  const ensureColumn = (name: string, sqlType: string): void => {
+    if (!existingColumns.has(name)) {
+      database.run(`ALTER TABLE transactions ADD COLUMN ${name} ${sqlType}`);
+    }
+  };
+
+  ensureColumn('import_id', 'TEXT');
+  ensureColumn('original_source', 'TEXT');
+  ensureColumn('duplicate_source', 'TEXT');
+  ensureColumn('duplicate_type', 'TEXT');
 
   const now = new Date().toISOString();
   database.run(
@@ -106,8 +132,8 @@ export function insertTransactions(transactions: Transaction[]): number {
   const database = getDatabase();
   const stmt = database.prepare(
     `INSERT INTO transactions
-      (id, source, original_id, date, amount, type, counterparty, description, category, notes, is_duplicate, merged_with, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, category, notes, is_duplicate, duplicate_source, duplicate_type, merged_with, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   let inserted = 0;
@@ -116,6 +142,8 @@ export function insertTransactions(transactions: Transaction[]): number {
       stmt.run([
         txn.id,
         txn.source,
+        txn.import_id ?? null,
+        txn.original_source ?? null,
         txn.original_id || null,
         txn.date,
         txn.amount,
@@ -125,6 +153,8 @@ export function insertTransactions(transactions: Transaction[]): number {
         txn.category || '其他',
         txn.notes || null,
         Number(txn.is_duplicate ?? 0),
+        txn.duplicate_source ?? null,
+        txn.duplicate_type ?? null,
         txn.merged_with ?? null,
         txn.created_at,
         txn.updated_at,

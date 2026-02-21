@@ -1,6 +1,8 @@
 export interface Transaction {
   id: string;
   source: 'alipay' | 'wechat' | 'yunshanfu';
+  import_id?: string | null;
+  original_source?: string;
   original_id?: string;
   date: string;
   amount: number;
@@ -10,6 +12,8 @@ export interface Transaction {
   category?: string;
   notes?: string;
   is_duplicate?: boolean | number;
+  duplicate_source?: string | null;
+  duplicate_type?: DuplicateType | null;
   merged_with?: string | null;
   created_at: string;
   updated_at: string;
@@ -68,6 +72,7 @@ export interface Summary {
 
 export type TransactionSource = 'alipay' | 'wechat' | 'yunshanfu';
 export type TransactionType = 'expense' | 'income' | 'transfer';
+export type DuplicateType = 'exact' | 'same_period' | 'cross_platform';
 export type TransactionSortBy = 'date' | 'amount';
 export type SortOrder = 'asc' | 'desc';
 
@@ -77,6 +82,7 @@ export interface TransactionQuery {
   type?: TransactionType;
   startDate?: string;
   endDate?: string;
+  duplicateType?: DuplicateType;
   q?: string;
   page?: number;
   pageSize?: number;

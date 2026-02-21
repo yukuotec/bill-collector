@@ -62,6 +62,8 @@ export default function Import() {
       setParseStatus('正在解析 PDF 账单...');
     } else if (ext === '.html' || ext === '.htm') {
       setParseStatus('正在解析 HTML 账单...');
+    } else if (ext === '.xlsx') {
+      setParseStatus('正在解析 Excel 账单...');
     } else {
       setParseStatus('正在解析 CSV...');
     }
@@ -84,8 +86,9 @@ export default function Import() {
     if (importing || previewLoading) return;
 
     const selectedPath = await window.electronAPI.selectFile([
-      { name: '账单文件', extensions: ['csv', 'pdf', 'html', 'png'] },
+      { name: '账单文件', extensions: ['csv', 'xlsx', 'pdf', 'html', 'png'] },
       { name: 'CSV Files', extensions: ['csv'] },
+      { name: 'Excel Files', extensions: ['xlsx'] },
       { name: 'PDF Files', extensions: ['pdf'] },
       { name: 'HTML Files', extensions: ['html'] },
       { name: 'Image Files', extensions: ['png'] },
@@ -198,7 +201,7 @@ export default function Import() {
         onDrop={handleDrop}
       >
         <p>拖拽账单文件到此处</p>
-        <p className="dropzone-tip">支持 .csv / .pdf / .html / .png</p>
+        <p className="dropzone-tip">支持 .csv / .xlsx / .pdf / .html / .png</p>
         <p className="dropzone-tip">当前来源：{SOURCE_LABELS[source]}</p>
       </div>
 

@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "记账小助手 - Personal expense tracker",
   "main": "dist/main/index.js",
+  "bin": {
+    "expense-cli": "dist/cli.js"
+  },
   "scripts": {
     "dev": "concurrently \"npm run dev:vite\" \"npm run dev:electron\"",
     "dev:vite": "vite",
@@ -22,7 +25,8 @@
     "react-dom": "^18.3.1",
     "recharts": "^2.15.0",
     "sql.js": "^1.11.0",
-    "tesseract.js": "^5.1.1"
+    "tesseract.js": "^5.1.1",
+    "commander": "^5.1.0"
   },
   "devDependencies": {
     "@types/papaparse": "^5.3.15",
@@ -37,5 +41,8 @@
     "vite": "^6.0.11"
   },
   "author": "",
-  "license": "MIT"
+  "license": "MIT",
+  "bin": {
+    "expense-cli": "dist/cli.js"
+  }
 }
