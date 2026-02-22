@@ -6,6 +6,7 @@ const {
   parseHashLocation,
   getYearDateRange,
   removeDrilldownField,
+  shouldApplyLatestResponse,
 } = require('../dist/shared/drilldown');
 const { buildTransactionWhereClause } = require('../dist/main/ipcFilters');
 
@@ -42,4 +43,14 @@ test('buildTransactionWhereClause adds exact merchant condition', () => {
 test('removeDrilldownField removes one field and keeps others', () => {
   const next = removeDrilldownField('?from=2026-01-01&to=2026-01-31&merchant=%E9%BA%A6%E5%BD%93%E5%8A%B3&drill=1', 'merchant');
   assert.equal(next, '?from=2026-01-01&to=2026-01-31&drill=1');
+});
+
+test('shouldApplyLatestResponse only accepts newest request id', () => {
+  assert.equal(shouldApplyLatestResponse(2, 1), false);
+  assert.equal(shouldApplyLatestResponse(2, 2), true);
+});
+
+test('parseDrilldownQuery preserves merchant whitespace for exact matching', () => {
+  const parsed = parseDrilldownQuery('?merchant=%20%E9%BA%A6%E5%BD%93%E5%8A%B3%20&drill=1');
+  assert.equal(parsed.merchant, ' 麦当劳 ');
 });

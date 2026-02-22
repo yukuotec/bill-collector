@@ -36,8 +36,8 @@ export function parseDrilldownQuery(search: string): DrilldownQuery {
   const parsed: DrilldownQuery = { drill };
   const validFrom = from && DATE_RE.test(from) ? from : undefined;
   const validTo = to && DATE_RE.test(to) ? to : undefined;
-  const validCategory = category?.trim() || undefined;
-  const validMerchant = merchant?.trim() || undefined;
+  const validCategory = category && category.trim().length > 0 ? category : undefined;
+  const validMerchant = merchant && merchant.trim().length > 0 ? merchant : undefined;
 
   if (validFrom) parsed.from = validFrom;
   if (validTo) parsed.to = validTo;
@@ -65,4 +65,8 @@ export function removeDrilldownField(search: string, field: 'from' | 'to' | 'cat
   params.delete(field);
   const query = params.toString();
   return query ? `?${query}` : '';
+}
+
+export function shouldApplyLatestResponse(latestRequestId: number, responseRequestId: number): boolean {
+  return latestRequestId === responseRequestId;
 }

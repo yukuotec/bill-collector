@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../shared/constants';
 import { DuplicateReviewItem, SortOrder, Transaction, TransactionQuery, TransactionSortBy } from '../../shared/types';
-import { parseDrilldownQuery, removeDrilldownField } from '../../shared/drilldown';
+import { parseDrilldownQuery, removeDrilldownField, shouldApplyLatestResponse } from '../../shared/drilldown';
 
 interface FilterState {
   startDate: string;
@@ -48,6 +48,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [pageSize, setPageSize] = useState(20);
   const [sortBy, setSortBy] = useState<TransactionSortBy>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
+  const requestIdRef = useRef(0);
   const [filter, setFilter] = useState<FilterState>({
     startDate: '',
     endDate: '',
@@ -62,6 +63,9 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
 
   const loadTransactions = async () => {
+    const responseRequestId = requestIdRef.current + 1;
+    requestIdRef.current = responseRequestId;
+
     try {
       const query: TransactionQuery = {
         startDate: filter.startDate || undefined,
@@ -78,9 +82,15 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
       };
 
       const result = await window.electronAPI.getTransactions(query);
+      if (!shouldApplyLatestResponse(requestIdRef.current, responseRequestId)) {
+        return;
+      }
       setTransactions(result.items);
       setTotal(result.totalCount ?? result.total ?? 0);
     } catch (error) {
+      if (!shouldApplyLatestResponse(requestIdRef.current, responseRequestId)) {
+        return;
+      }
       console.error('Failed to load transactions:', error);
     }
   };
