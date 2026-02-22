@@ -4,6 +4,9 @@ const { parseAlipay } = require('../dist/parsers/alipay');
 const { parseBank } = require('../dist/parsers/bank');
 const { parseWechat } = require('../dist/parsers/wechat');
 const { parseYunshanfu } = require('../dist/parsers/yunshanfu');
+const { parseBillText } = require('../dist/parsers/billText');
+const { parseCmbcCreditCardText } = require('../dist/parsers/pdf');
+const { parseAbcCreditCardText } = require('../dist/parsers/pdf');
 
 test('parseAlipay should parse real-world style CSV with preface and mixed transaction types', () => {
   const csv = [
@@ -127,4 +130,87 @@ test('parseBank should parse debit/credit split columns', () => {
   assert.equal(rows[0].type, 'income');
   assert.equal(rows[1].type, 'expense');
   assert.equal(rows[1].bank_name, '招商银行');
+});
+
+test('parseBillText should extract counterparty/original_id/refund from PDF-like lines', () => {
+  const text = [
+    '2026-02-05 11:20:00 | 退款 | 麦当劳 | order refund | +23.00 | 420000099',
+    '2026-02-06 12:00:00 | 消费 | 星巴克 | 咖啡 | -36.50 | 420000100',
+  ].join('\n');
+
+  const rows = parseBillText(text, 'wechat');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].type, 'income');
+  assert.equal(rows[0].is_refund, 1);
+  assert.equal(rows[0].counterparty, '麦当劳');
+  assert.equal(rows[0].original_id, '420000099');
+  assert.equal(rows[1].type, 'expense');
+  assert.equal(rows[1].counterparty, '星巴克');
+  assert.equal(rows[1].original_id, '420000100');
+});
+
+test('parseBillText should parse wrapped date/amount lines from PDF text extraction', () => {
+  const text = [
+    '2026-02-10 18:01:00 消费 美团外卖 晚餐',
+    '-45.60 交易号: 20260210223344556677',
+  ].join('\n');
+
+  const rows = parseBillText(text, 'alipay');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].date, '2026-02-10');
+  assert.equal(rows[0].type, 'expense');
+  assert.equal(rows[0].amount, 45.6);
+  assert.equal(rows[0].counterparty, '美团外卖');
+  assert.equal(rows[0].original_id, '20260210223344556677');
+});
+
+test('parseCmbcCreditCardText should parse CMBC split-line statement rows', () => {
+  const text = [
+    '民生银行信用卡对账单 (2026年01月)',
+    '本期财务明细 Transaction Details',
+    '12/27',
+    '银联扫码-山姆会员商店',
+    '648.58',
+    '12/27',
+    '6734',
+    '01/07',
+    '于阔/付款尾号:3749/银联入账',
+    '-11.00',
+    '01/07',
+    '6734',
+  ].join('\n');
+
+  const rows = parseCmbcCreditCardText(text, 'bank');
+  assert.equal(rows.length, 2);
+  assert.equal(rows[0].date, '2025-12-27');
+  assert.equal(rows[0].type, 'expense');
+  assert.equal(rows[0].amount, 648.58);
+  assert.equal(rows[0].counterparty, '银联扫码-山姆会员商店');
+  assert.equal(rows[1].date, '2026-01-07');
+  assert.equal(rows[1].type, 'income');
+  assert.equal(rows[1].amount, 11);
+});
+
+test('parseAbcCreditCardText should parse ABC compact statement rows', () => {
+  const text = [
+    '农业银行信用卡对账单2026年02月（补）',
+    '交易明细',
+    '●还款',
+    '2601262601268865银联入账 于阔/付款尾号:3749/387.46/CNY387.46/CNY',
+    '●消费',
+    '2601112601118865跨行无卡消费 肯德基(蓝湾天地KFC店)5.36/CNY-5.36/CNY',
+    '2602072602078865网上消费 支付宝，杭州深度求索人工智能基础技术研究',
+    '有限公司',
+    '10.00/CNY-10.00/CNY',
+  ].join('\n');
+
+  const rows = parseAbcCreditCardText(text, 'bank');
+  assert.equal(rows.length, 3);
+  assert.equal(rows[0].date, '2026-01-26');
+  assert.equal(rows[0].type, 'income');
+  assert.equal(rows[0].amount, 387.46);
+  assert.equal(rows[1].type, 'expense');
+  assert.equal(rows[1].counterparty, '肯德基(蓝湾天地KFC店)');
+  assert.equal(rows[2].amount, 10);
+  assert.equal(rows[2].type, 'expense');
 });

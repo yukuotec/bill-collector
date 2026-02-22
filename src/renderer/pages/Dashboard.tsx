@@ -77,7 +77,7 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
   return (
     <div className="dashboard">
       <div className="dashboard-header">
-        <h2>月度汇总</h2>
+        <h2>年度与月度汇总</h2>
         <div className="filter-inline">
           <label htmlFor="summary-year">年份</label>
           <select id="summary-year" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}>
@@ -91,6 +91,18 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
       </div>
 
       <div className="summary-cards">
+        <div className="summary-card">
+          <p>{summary.year} 年支出</p>
+          <h3 className="expense">{formatCurrency(summary.yearlyExpense)}</h3>
+        </div>
+        <div className="summary-card">
+          <p>{summary.year} 年收入</p>
+          <h3 className="income">{formatCurrency(summary.yearlyIncome)}</h3>
+        </div>
+        <div className="summary-card">
+          <p>{summary.year} 年净额</p>
+          <h3 className={summary.yearlyNet >= 0 ? 'income' : 'expense'}>{formatCurrency(summary.yearlyNet)}</h3>
+        </div>
         <div className="summary-card">
           <p>{summary.currentMonth} 支出</p>
           <h3 className="expense">{formatCurrency(summary.currentMonthExpense)}</h3>

@@ -67,6 +67,9 @@ export interface Summary {
   currentMonth: string;
   currentMonthExpense: number;
   currentMonthIncome: number;
+  yearlyExpense: number;
+  yearlyIncome: number;
+  yearlyNet: number;
   monthly: SummaryMonthlyItem[];
   byCategory: SummaryCategoryItem[];
   topMerchants: SummaryMerchantItem[];

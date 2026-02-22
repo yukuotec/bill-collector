@@ -871,6 +871,9 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     );
     const currentMonthExpense = Number(currentMonthRows[0]?.expense ?? 0);
     const currentMonthIncome = Number(currentMonthRows[0]?.income ?? 0);
+    const yearlyExpense = monthly.reduce((sum, item) => sum + item.expense, 0);
+    const yearlyIncome = monthly.reduce((sum, item) => sum + item.income, 0);
+    const yearlyNet = yearlyIncome - yearlyExpense;
 
     const byCategoryRows = queryAll(
       `
@@ -913,6 +916,9 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       currentMonth: targetMonth,
       currentMonthExpense,
       currentMonthIncome,
+      yearlyExpense,
+      yearlyIncome,
+      yearlyNet,
       monthly,
       byCategory,
       topMerchants,

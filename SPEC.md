@@ -57,6 +57,7 @@
 ### 4. Dashboard
 
 - **Monthly Summary:** Total spending by month
+- **Annual Summary:** Yearly expense/income/net overview
 - **Category Breakdown:** Pie chart of spending by category
 - **Top Merchants:** Most frequent counterparties
 - **Trend Chart:** Monthly spending over time (line chart)
