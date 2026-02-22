@@ -60,11 +60,6 @@ function ensureSchema(): void {
     )
   `);
 
-  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
-  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
-  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source)');
-  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_duplicate_type ON transactions(duplicate_type)');
-
   const columnsStmt = database.prepare("PRAGMA table_info('transactions')");
   const existingColumns = new Set<string>();
   while (columnsStmt.step()) {
@@ -83,11 +78,18 @@ function ensureSchema(): void {
 
   ensureColumn('import_id', 'TEXT');
   ensureColumn('original_source', 'TEXT');
-  ensureColumn('duplicate_source', 'TEXT');
-  ensureColumn('duplicate_type', 'TEXT');
+  ensureColumn('original_id', 'TEXT');
+  ensureColumn('bank_name', 'TEXT');
   ensureColumn('is_refund', 'INTEGER DEFAULT 0');
   ensureColumn('refund_of', 'TEXT');
-  ensureColumn('bank_name', 'TEXT');
+  ensureColumn('duplicate_source', 'TEXT');
+  ensureColumn('duplicate_type', 'TEXT');
+  ensureColumn('merged_with', 'TEXT');
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_duplicate_type ON transactions(duplicate_type)');
 
   const now = new Date().toISOString();
   database.run(

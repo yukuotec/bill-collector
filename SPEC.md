@@ -78,15 +78,22 @@
 CREATE TABLE transactions (
   id TEXT PRIMARY KEY,
   source TEXT NOT NULL,           -- 'alipay' | 'wechat' | 'yunshanfu'
+  import_id TEXT,                 -- Import batch ID
+  original_source TEXT,           -- Original source when merged/imported
   original_id TEXT,               -- Original ID from source
   date TEXT NOT NULL,              -- ISO date (YYYY-MM-DD)
   amount REAL NOT NULL,            -- Positive for income, negative for expense
   type TEXT NOT NULL,              -- 'expense' | 'income' | 'transfer'
   counterparty TEXT,               -- Merchant/name
   description TEXT,                -- Original description
+  bank_name TEXT,                  -- Bank statement source name
   category TEXT DEFAULT '其他',     -- Auto-tagged category
   notes TEXT,                      -- User notes
+  is_refund INTEGER DEFAULT 0,     -- 1 if detected as refund
+  refund_of TEXT,                  -- Referenced original transaction ID
   is_duplicate INTEGER DEFAULT 0, -- 1 if marked as duplicate
+  duplicate_source TEXT,           -- exact | same_period | cross_platform
+  duplicate_type TEXT,             -- duplicate type for filtering/review
   merged_with TEXT,               -- ID of merged transaction
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -110,7 +117,7 @@ CREATE TABLE imports (
 ## Tech Stack
 
 - **Framework:** Electron + React + TypeScript
-- **Database:** SQLite (better-sqlite3)
+- **Database:** SQLite via `sql.js` (embedded/local file)
 - **CSV Parsing:** papaparse
 - **Charts:** Recharts
 - **Build Tool:** Vite + electron-builder
