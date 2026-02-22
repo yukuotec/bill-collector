@@ -6,7 +6,16 @@ export interface DrilldownQuery {
   drill?: boolean;
 }
 
+export type AppPage = 'dashboard' | 'import' | 'transactions';
+
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+export function parseHashLocation(hash: string): { page: AppPage; search: string } {
+  const raw = hash.startsWith('#') ? hash.slice(1) : hash;
+  const [path, query = ''] = raw.split('?');
+  const page: AppPage = path === 'import' || path === 'transactions' ? path : 'dashboard';
+  return { page, search: query ? `?${query}` : '' };
+}
 
 export function parseDrilldownQuery(search: string): DrilldownQuery {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
