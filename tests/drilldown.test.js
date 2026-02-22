@@ -6,6 +6,7 @@ const {
   parseHashLocation,
   getYearDateRange,
 } = require('../dist/shared/drilldown');
+const { buildTransactionWhereClause } = require('../dist/main/ipcFilters');
 
 test('parseDrilldownQuery parses category drill with date range', () => {
   const parsed = parseDrilldownQuery('?from=2026-01-01&to=2026-01-31&category=%E9%A4%90%E9%A5%AE&drill=1');
@@ -29,4 +30,10 @@ test('parseHashLocation returns page and search from hash', () => {
 
 test('getYearDateRange returns full year bounds', () => {
   assert.deepEqual(getYearDateRange(2026), { from: '2026-01-01', to: '2026-12-31' });
+});
+
+test('buildTransactionWhereClause adds exact merchant condition', () => {
+  const out = buildTransactionWhereClause({ merchant: '麦当劳' });
+  assert.equal(out.where.includes('counterparty = ?'), true);
+  assert.equal(out.params[0], '麦当劳');
 });
