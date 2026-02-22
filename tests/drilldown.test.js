@@ -5,6 +5,7 @@ const {
   buildDrilldownQuery,
   parseHashLocation,
   getYearDateRange,
+  removeDrilldownField,
 } = require('../dist/shared/drilldown');
 const { buildTransactionWhereClause } = require('../dist/main/ipcFilters');
 
@@ -36,4 +37,9 @@ test('buildTransactionWhereClause adds exact merchant condition', () => {
   const out = buildTransactionWhereClause({ merchant: '麦当劳' });
   assert.equal(out.where.includes('counterparty = ?'), true);
   assert.equal(out.params[0], '麦当劳');
+});
+
+test('removeDrilldownField removes one field and keeps others', () => {
+  const next = removeDrilldownField('?from=2026-01-01&to=2026-01-31&merchant=%E9%BA%A6%E5%BD%93%E5%8A%B3&drill=1', 'merchant');
+  assert.equal(next, '?from=2026-01-01&to=2026-01-31&drill=1');
 });

@@ -87,7 +87,14 @@ export default function App() {
           />
         )}
         {currentPage === 'import' && <Import />}
-        {currentPage === 'transactions' && <Transactions />}
+        {currentPage === 'transactions' && (
+          <Transactions
+            locationSearch={locationState.search}
+            onReplaceSearch={(search) => {
+              navigate('transactions', search);
+            }}
+          />
+        )}
       </main>
     </div>
   );

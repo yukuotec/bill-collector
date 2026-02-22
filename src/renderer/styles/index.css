@@ -295,6 +295,24 @@ h2 {
   min-width: 220px;
 }
 
+.drilldown-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.drilldown-chip {
+  border: 1px solid #c7e0ff;
+  background: #eef6ff;
+  color: #1a4e8a;
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
 .duplicate-panel {
   margin-bottom: 20px;
 }
@@ -337,6 +355,14 @@ h2 {
 
 .table tr:hover {
   background-color: #fafafa;
+}
+
+.drillable-row {
+  cursor: pointer;
+}
+
+.drillable-row:hover {
+  background-color: #eef6ff;
 }
 
 .table select {

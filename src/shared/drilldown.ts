@@ -59,3 +59,10 @@ export function buildDrilldownQuery(input: DrilldownQuery): string {
   const query = params.toString();
   return query ? `?${query}` : '';
 }
+
+export function removeDrilldownField(search: string, field: 'from' | 'to' | 'category' | 'merchant' | 'drill'): string {
+  const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
+  params.delete(field);
+  const query = params.toString();
+  return query ? `?${query}` : '';
+}
