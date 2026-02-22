@@ -1,14 +1,21 @@
 import { useEffect, useMemo, useState } from 'react';
 import { CATEGORIES } from '../../shared/constants';
 import { DuplicateReviewItem, SortOrder, Transaction, TransactionQuery, TransactionSortBy } from '../../shared/types';
+import { parseDrilldownQuery, removeDrilldownField } from '../../shared/drilldown';
 
 interface FilterState {
   startDate: string;
   endDate: string;
   category: string;
+  merchant: string;
   source: string;
   type: string;
   q: string;
+}
+
+interface TransactionsProps {
+  locationSearch: string;
+  onReplaceSearch: (search: string) => void;
 }
 
 const PAGE_SIZE_OPTIONS = [20, 30, 50];
@@ -33,7 +40,7 @@ function isRefund(txn: Transaction): boolean {
   return txn.is_refund === 1 || txn.is_refund === true;
 }
 
-export default function Transactions() {
+export default function Transactions({ locationSearch, onReplaceSearch }: TransactionsProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateReviewItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -45,10 +52,12 @@ export default function Transactions() {
     startDate: '',
     endDate: '',
     category: '',
+    merchant: '',
     source: '',
     type: '',
     q: '',
   });
+  const drillQuery = useMemo(() => parseDrilldownQuery(locationSearch), [locationSearch]);
 
   const totalPages = useMemo(() => Math.max(1, Math.ceil(total / pageSize)), [total, pageSize]);
 
@@ -58,6 +67,7 @@ export default function Transactions() {
         startDate: filter.startDate || undefined,
         endDate: filter.endDate || undefined,
         category: filter.category || undefined,
+        merchant: filter.merchant || undefined,
         source: (filter.source || undefined) as TransactionQuery['source'],
         type: (filter.type || undefined) as TransactionQuery['type'],
         q: filter.q || undefined,
@@ -91,6 +101,20 @@ export default function Transactions() {
   useEffect(() => {
     loadDuplicates();
   }, []);
+
+  useEffect(() => {
+    const hasDrillParams = Boolean(drillQuery.drill || drillQuery.from || drillQuery.to || drillQuery.category || drillQuery.merchant);
+    if (!hasDrillParams) return;
+
+    setPage(1);
+    setFilter((prev) => ({
+      ...prev,
+      startDate: drillQuery.from || '',
+      endDate: drillQuery.to || '',
+      category: drillQuery.category || '',
+      merchant: drillQuery.merchant || '',
+    }));
+  }, [drillQuery]);
 
   useEffect(() => {
     if (page > totalPages) {
@@ -145,9 +169,39 @@ export default function Transactions() {
     return `${date} / ${type} / ${amount} / ${source} / ${merchant}`;
   };
 
+  const drillContextVisible = Boolean(drillQuery.from || drillQuery.to || drillQuery.category || drillQuery.merchant || drillQuery.drill);
+  const drillChips: Array<{ key: 'from' | 'to' | 'category' | 'merchant'; label: string }> = [];
+  if (filter.startDate) drillChips.push({ key: 'from', label: `开始: ${filter.startDate}` });
+  if (filter.endDate) drillChips.push({ key: 'to', label: `结束: ${filter.endDate}` });
+  if (filter.category) drillChips.push({ key: 'category', label: `分类: ${filter.category}` });
+  if (filter.merchant) drillChips.push({ key: 'merchant', label: `商家: ${filter.merchant}` });
+
+  const clearDrillContext = () => {
+    setPage(1);
+    setFilter((prev) => ({ ...prev, startDate: '', endDate: '', category: '', merchant: '' }));
+    onReplaceSearch('');
+  };
+
   return (
     <div className="transactions">
       <h2>交易记录</h2>
+
+      {drillContextVisible && (
+        <div className="drilldown-chips">
+          {drillChips.map((chip) => (
+            <button
+              key={chip.key}
+              className="drilldown-chip"
+              onClick={() => onReplaceSearch(removeDrilldownField(locationSearch, chip.key))}
+            >
+              {chip.label} ×
+            </button>
+          ))}
+          <button className="btn-secondary" onClick={clearDrillContext}>
+            清除钻取条件
+          </button>
+        </div>
+      )}
 
       <div className="filters filters-wrap">
         <input
@@ -193,11 +247,12 @@ export default function Transactions() {
         <button
           className="btn-secondary"
           onClick={() => {
-            setFilter({ startDate: '', endDate: '', category: '', source: '', type: '', q: '' });
+            setFilter({ startDate: '', endDate: '', category: '', merchant: '', source: '', type: '', q: '' });
             setPage(1);
             setSortBy('date');
             setSortOrder('desc');
             setPageSize(20);
+            onReplaceSearch('');
           }}
         >
           重置

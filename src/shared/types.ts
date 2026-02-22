@@ -81,6 +81,7 @@ export type SortOrder = 'asc' | 'desc';
 
 export interface TransactionQuery {
   category?: string;
+  merchant?: string;
   source?: TransactionSource;
   type?: TransactionType;
   startDate?: string;

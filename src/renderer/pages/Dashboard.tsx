@@ -1,10 +1,15 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Summary } from '../../shared/types';
+import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
 
-export default function Dashboard() {
+interface DashboardProps {
+  onDrilldown: (query: DrilldownQuery) => void;
+}
+
+export default function Dashboard({ onDrilldown }: DashboardProps) {
   const currentYear = new Date().getFullYear();
   const [summary, setSummary] = useState<Summary | null>(null);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
@@ -67,6 +72,8 @@ export default function Dashboard() {
   if (loading && !summary) return <div>加载中...</div>;
   if (!summary) return <div>暂无数据</div>;
 
+  const range = getYearDateRange(summary.year);
+
   return (
     <div className="dashboard">
       <div className="dashboard-header">
@@ -125,6 +132,14 @@ export default function Dashboard() {
                 outerRadius={90}
                 fill="#8884d8"
                 dataKey="value"
+                onClick={(entry: { name?: string }) => {
+                  if (!entry?.name) return;
+                  onDrilldown({
+                    ...range,
+                    category: entry.name,
+                    drill: true,
+                  });
+                }}
               >
                 {pieData.map((entry, index) => (
                   <Cell key={`cell-${index}`} fill={entry.color} />
@@ -147,7 +162,17 @@ export default function Dashboard() {
         </thead>
         <tbody>
           {summary.topMerchants.map((merchant) => (
-            <tr key={merchant.counterparty}>
+            <tr
+              key={merchant.counterparty}
+              onClick={() =>
+                onDrilldown({
+                  ...range,
+                  merchant: merchant.counterparty,
+                  drill: true,
+                })
+              }
+              className="drillable-row"
+            >
               <td>{merchant.counterparty}</td>
               <td>{merchant.count} 次</td>
               <td>{formatCurrency(merchant.total)}</td>

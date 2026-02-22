@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
 import Transactions from './pages/Transactions';
@@ -41,31 +42,59 @@ declare global {
   }
 }
 
-type Page = 'dashboard' | 'import' | 'transactions';
-
 export default function App() {
-  const [currentPage, setCurrentPage] = useState<Page>('dashboard');
+  const [locationState, setLocationState] = useState(() => parseHashLocation(window.location.hash));
+
+  useEffect(() => {
+    const onHashChange = () => {
+      setLocationState(parseHashLocation(window.location.hash));
+    };
+
+    window.addEventListener('hashchange', onHashChange);
+    return () => {
+      window.removeEventListener('hashchange', onHashChange);
+    };
+  }, []);
+
+  const navigate = (page: AppPage, search = '') => {
+    window.location.hash = `${page}${search}`;
+  };
+
+  const currentPage = locationState.page;
 
   return (
     <div className="app">
       <nav className="nav">
         <h1>记账小助手</h1>
         <div className="nav-links">
-          <button onClick={() => setCurrentPage('dashboard')} className={currentPage === 'dashboard' ? 'active' : ''}>
+          <button onClick={() => navigate('dashboard')} className={currentPage === 'dashboard' ? 'active' : ''}>
             仪表盘
           </button>
-          <button onClick={() => setCurrentPage('import')} className={currentPage === 'import' ? 'active' : ''}>
+          <button onClick={() => navigate('import')} className={currentPage === 'import' ? 'active' : ''}>
             导入
           </button>
-          <button onClick={() => setCurrentPage('transactions')} className={currentPage === 'transactions' ? 'active' : ''}>
+          <button onClick={() => navigate('transactions')} className={currentPage === 'transactions' ? 'active' : ''}>
             交易记录
           </button>
         </div>
       </nav>
       <main className="main">
-        {currentPage === 'dashboard' && <Dashboard />}
+        {currentPage === 'dashboard' && (
+          <Dashboard
+            onDrilldown={(query) => {
+              navigate('transactions', buildDrilldownQuery(query));
+            }}
+          />
+        )}
         {currentPage === 'import' && <Import />}
-        {currentPage === 'transactions' && <Transactions />}
+        {currentPage === 'transactions' && (
+          <Transactions
+            locationSearch={locationState.search}
+            onReplaceSearch={(search) => {
+              navigate('transactions', search);
+            }}
+          />
+        )}
       </main>
     </div>
   );

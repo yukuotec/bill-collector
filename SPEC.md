@@ -60,6 +60,7 @@
 - **Category Breakdown:** Pie chart of spending by category
 - **Top Merchants:** Most frequent counterparties
 - **Trend Chart:** Monthly spending over time (line chart)
+- **Drill-down Analysis:** Click category/top merchant to jump to filtered transaction details (carry active date range)
 
 ### 5. Data Management
 
@@ -181,6 +182,7 @@ expense-tracker/
 - [x] Refund detection and linking
 - [x] Bank statement parser
 - [x] S3 backup support
+- [x] Dashboard drill-down to Transactions (category/top merchant + date range + removable context chips)
 
 ### Future (Post-MVP)
 - [ ] Auto-collection (web scraping / notification capture)
