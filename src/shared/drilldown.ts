@@ -17,6 +17,13 @@ export function parseHashLocation(hash: string): { page: AppPage; search: string
   return { page, search: query ? `?${query}` : '' };
 }
 
+export function getYearDateRange(year: number): { from: string; to: string } {
+  return {
+    from: `${year}-01-01`,
+    to: `${year}-12-31`,
+  };
+}
+
 export function parseDrilldownQuery(search: string): DrilldownQuery {
   const params = new URLSearchParams(search.startsWith('?') ? search.slice(1) : search);
 

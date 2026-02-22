@@ -4,6 +4,7 @@ const {
   parseDrilldownQuery,
   buildDrilldownQuery,
   parseHashLocation,
+  getYearDateRange,
 } = require('../dist/shared/drilldown');
 
 test('parseDrilldownQuery parses category drill with date range', () => {
@@ -24,4 +25,8 @@ test('buildDrilldownQuery round-trips merchant drill', () => {
 test('parseHashLocation returns page and search from hash', () => {
   const out = parseHashLocation('#transactions?from=2026-01-01&to=2026-01-31');
   assert.deepEqual(out, { page: 'transactions', search: '?from=2026-01-01&to=2026-01-31' });
+});
+
+test('getYearDateRange returns full year bounds', () => {
+  assert.deepEqual(getYearDateRange(2026), { from: '2026-01-01', to: '2026-12-31' });
 });

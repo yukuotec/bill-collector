@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
-import { AppPage, parseHashLocation } from '../shared/drilldown';
+import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
 import Transactions from './pages/Transactions';
@@ -79,7 +79,13 @@ export default function App() {
         </div>
       </nav>
       <main className="main">
-        {currentPage === 'dashboard' && <Dashboard />}
+        {currentPage === 'dashboard' && (
+          <Dashboard
+            onDrilldown={(query) => {
+              navigate('transactions', buildDrilldownQuery(query));
+            }}
+          />
+        )}
         {currentPage === 'import' && <Import />}
         {currentPage === 'transactions' && <Transactions />}
       </main>
