@@ -15,8 +15,18 @@ import { parseYunshanfu } from './parsers/yunshanfu';
 import { type DuplicateType, type Transaction, type TransactionSource } from './shared/types';
 
 type DbRow = Record<string, unknown>;
+type WatcherLike = {
+  on(event: 'add' | 'error', handler: (...args: any[]) => void): WatcherLike;
+  close(): Promise<void>;
+};
 
 const DEFAULT_DB_PATH = path.resolve(process.cwd(), 'expenses.db');
+let chokidar: { watch: (dir: string, options: Record<string, unknown>) => WatcherLike } | null = null;
+try {
+  chokidar = require('chokidar');
+} catch {
+  chokidar = null;
+}
 
 let SQL: any = null;
 
@@ -587,6 +597,92 @@ function parseSource(source: string): TransactionSource {
   return source;
 }
 
+function detectSourceFromFilename(filePath: string): TransactionSource | null {
+  const name = path.basename(filePath).toLowerCase();
+  if (name.includes('alipay')) return 'alipay';
+  if (name.includes('wechat')) return 'wechat';
+  if (name.includes('yunshanfu')) return 'yunshanfu';
+  if (name.includes('bank')) return 'bank';
+  return null;
+}
+
+function daysBetween(dateA: string, dateB: string): number {
+  const a = Date.parse(`${dateA}T00:00:00Z`);
+  const b = Date.parse(`${dateB}T00:00:00Z`);
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 0;
+  return Math.max(0, (b - a) / (24 * 60 * 60 * 1000));
+}
+
+function classifyCadenceStrict(avgIntervalDays: number): 'weekly' | 'monthly' | 'other' {
+  if (avgIntervalDays >= 6 && avgIntervalDays <= 8) return 'weekly';
+  if (avgIntervalDays >= 27 && avgIntervalDays <= 33) return 'monthly';
+  return 'other';
+}
+
+function createCsvWatcher(watchPath: string): WatcherLike {
+  if (chokidar) {
+    return chokidar.watch(watchPath, {
+      ignored: (inputPath: string) => path.extname(inputPath).toLowerCase() !== '.csv',
+      ignoreInitial: true,
+      awaitWriteFinish: {
+        stabilityThreshold: 400,
+        pollInterval: 100,
+      },
+    });
+  }
+
+  let addHandler: ((addedPath: string) => void) | undefined;
+  const knownFiles = new Set(fs.readdirSync(watchPath));
+  const pending = new Map<string, number>();
+
+  const timer = setInterval(() => {
+    let entries: string[] = [];
+    try {
+      entries = fs.readdirSync(watchPath);
+    } catch {
+      return;
+    }
+
+    const now = Date.now();
+    for (const baseName of entries) {
+      if (path.extname(baseName).toLowerCase() !== '.csv') continue;
+      if (knownFiles.has(baseName)) continue;
+
+      const fullPath = path.join(watchPath, baseName);
+      try {
+        const stat = fs.statSync(fullPath);
+        if (!stat.isFile()) continue;
+        const firstSeenAt = pending.get(fullPath);
+        if (!firstSeenAt) {
+          pending.set(fullPath, now);
+          continue;
+        }
+        if (now - firstSeenAt < 400) {
+          continue;
+        }
+        pending.delete(fullPath);
+        knownFiles.add(baseName);
+        addHandler?.(fullPath);
+      } catch {
+        pending.delete(fullPath);
+      }
+    }
+  }, 200);
+
+  return {
+    on(event: 'add' | 'error', handler: (...args: any[]) => void): WatcherLike {
+      if (event === 'add') {
+        addHandler = handler as (addedPath: string) => void;
+      }
+      return this;
+    },
+    async close(): Promise<void> {
+      clearInterval(timer);
+      pending.clear();
+    },
+  };
+}
+
 const program = new Command();
 
 program
@@ -595,26 +691,98 @@ program
   .version('1.0.0');
 
 program
-  .command('import <file>')
+  .command('import [file]')
   .description('导入账单文件')
-  .requiredOption('--source <source>', '来源: alipay|wechat|yunshanfu|bank')
-  .action(async (file: string, options: { source: string }) => {
+  .option('--source <source>', '来源: alipay|wechat|yunshanfu|bank')
+  .option('--watch-dir <dir>', '监听目录中的新 CSV 并自动导入')
+  .action(async (file: string | undefined, options: { source?: string; watchDir?: string }) => {
+    const importOne = (db: any, dbPath: string, filePath: string, source: TransactionSource): void => {
+      const content = decodeCsvContent(fs.readFileSync(filePath));
+      const transactions = parseTransactionsBySource(content, source);
+      const result = insertTransactions(db, source, filePath, transactions);
+      saveDatabase(db, dbPath);
+      console.log(
+        `file=${path.basename(filePath)} source=${source} imported=${result.inserted} exact=${result.exactMerged} same_period=${result.samePeriodFlagged} cross_platform=${result.crossPlatformFlagged} parsed=${transactions.length} db=${dbPath}`
+      );
+    };
+
+    if (options.watchDir) {
+      if (file) {
+        throw new Error('使用 --watch-dir 时不需要提供 <file>');
+      }
+      const watchPath = path.resolve(options.watchDir);
+      if (!fs.existsSync(watchPath)) {
+        throw new Error(`监听目录不存在: ${watchPath}`);
+      }
+      if (!fs.statSync(watchPath).isDirectory()) {
+        throw new Error(`监听路径不是目录: ${watchPath}`);
+      }
+
+      const { db, dbPath } = await openDatabase();
+      const watcher = createCsvWatcher(watchPath);
+
+      let queue: Promise<void> = Promise.resolve();
+      let shuttingDown = false;
+      const keepAlive = new Promise<void>((resolve) => {
+        const shutdown = async (): Promise<void> => {
+          if (shuttingDown) return;
+          shuttingDown = true;
+          console.log('shutting down watcher...');
+          await queue.catch(() => undefined);
+          await watcher.close();
+          closeDatabase(db, dbPath);
+          resolve();
+        };
+        process.once('SIGINT', () => {
+          void shutdown();
+        });
+      });
+
+      watcher.on('add', (addedPath: string) => {
+        queue = queue
+          .then(() => {
+            const source = detectSourceFromFilename(addedPath);
+            if (!source) {
+              console.log(`skip file=${path.basename(addedPath)} reason=unknown_source`);
+              return;
+            }
+            importOne(db, dbPath, addedPath, source);
+          })
+          .catch((err: unknown) => {
+            const message = err instanceof Error ? err.message : String(err);
+            console.error(`Error: file=${path.basename(addedPath)} message=${message}`);
+          });
+      });
+
+      watcher.on('error', (err: unknown) => {
+        const message = err instanceof Error ? err.message : String(err);
+        console.error(`Error: watcher message=${message}`);
+      });
+
+      if (!chokidar) {
+        console.log('warn: chokidar not installed, using fs.watch fallback');
+      }
+      console.log(`watching dir=${watchPath} (new .csv files only)`);
+      await keepAlive;
+      return;
+    }
+
+    if (!file) {
+      throw new Error('请提供 <file> 或使用 --watch-dir <dir>');
+    }
+    if (!options.source) {
+      throw new Error('导入单文件时必须提供 --source <source>');
+    }
+
     const source = parseSource(options.source);
     const filePath = path.resolve(file);
-
     if (!fs.existsSync(filePath)) {
       throw new Error(`文件不存在: ${filePath}`);
     }
 
     const { db, dbPath } = await openDatabase();
     try {
-      const content = decodeCsvContent(fs.readFileSync(filePath));
-      const transactions = parseTransactionsBySource(content, source);
-      const result = insertTransactions(db, source, filePath, transactions);
-      saveDatabase(db, dbPath);
-      console.log(
-        `imported=${result.inserted} exact=${result.exactMerged} same_period=${result.samePeriodFlagged} cross_platform=${result.crossPlatformFlagged} parsed=${transactions.length} db=${dbPath}`
-      );
+      importOne(db, dbPath, filePath, source);
     } finally {
       db.close();
     }
@@ -815,6 +983,70 @@ program
           2
         )
       );
+    } finally {
+      db.close();
+    }
+  });
+
+program
+  .command('recurring')
+  .description('识别可能的周期性支出')
+  .option('--min-occurrences <n>', '最少出现次数', '3')
+  .action(async (options: { minOccurrences: string }) => {
+    const minOccurrences = Number.parseInt(options.minOccurrences, 10);
+    if (!Number.isInteger(minOccurrences) || minOccurrences < 2) {
+      throw new Error('min-occurrences 必须是大于等于 2 的整数');
+    }
+
+    const { db } = await openDatabase();
+    try {
+      const rows = queryAll(
+        db,
+        `SELECT counterparty, date, amount
+         FROM transactions
+         WHERE type = 'expense'
+           AND counterparty IS NOT NULL
+           AND TRIM(counterparty) != ''
+         ORDER BY counterparty ASC, date ASC, created_at ASC`
+      ) as Array<{ counterparty?: string; date?: string; amount?: number }>;
+
+      const byCounterparty = new Map<string, Array<{ date: string; amount: number }>>();
+      for (const row of rows) {
+        const counterparty = String(row.counterparty || '').trim();
+        const date = String(row.date || '').trim();
+        if (!counterparty || !date) continue;
+        const amount = Number(row.amount ?? 0);
+        if (!byCounterparty.has(counterparty)) {
+          byCounterparty.set(counterparty, []);
+        }
+        byCounterparty.get(counterparty)?.push({ date, amount });
+      }
+
+      const items = Array.from(byCounterparty.entries())
+        .map(([counterparty, txns]) => {
+          if (txns.length < minOccurrences) return null;
+
+          const intervals: number[] = [];
+          for (let i = 1; i < txns.length; i += 1) {
+            intervals.push(daysBetween(txns[i - 1].date, txns[i].date));
+          }
+          if (intervals.length === 0) return null;
+
+          const averageIntervalDays = intervals.reduce((sum, v) => sum + v, 0) / intervals.length;
+          const totalExpense = txns.reduce((sum, txn) => sum + txn.amount, 0);
+
+          return {
+            counterparty,
+            count: txns.length,
+            averageIntervalDays: Number(averageIntervalDays.toFixed(2)),
+            cadence: classifyCadenceStrict(averageIntervalDays),
+            totalExpense: Number(totalExpense.toFixed(2)),
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => Boolean(item))
+        .sort((a, b) => b.count - a.count || a.counterparty.localeCompare(b.counterparty));
+
+      console.log(JSON.stringify({ items }, null, 2));
     } finally {
       db.close();
     }
