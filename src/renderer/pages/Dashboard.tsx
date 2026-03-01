@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Summary } from '../../shared/types';
+import { BudgetAlert, Summary } from '../../shared/types';
 import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
@@ -29,6 +29,7 @@ interface DashboardProps {
 export default function Dashboard({ onDrilldown }: DashboardProps) {
   const currentYear = new Date().getFullYear();
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [loading, setLoading] = useState<boolean>(true);
 
@@ -64,6 +65,19 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
 
     setSelectedYear(summary.availableYears[0]);
   }, [summary, selectedYear]);
+
+  useEffect(() => {
+    const loadBudgetAlerts = async () => {
+      try {
+        const alerts = await window.electronAPI.getBudgetAlerts();
+        setBudgetAlerts(alerts);
+      } catch (error) {
+        console.error('Failed to load budget alerts:', error);
+      }
+    };
+
+    void loadBudgetAlerts();
+  }, []);
 
   const formatCurrency = (value: number) => `¥${value.toFixed(2)}`;
 
@@ -139,6 +153,42 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
           <h3 className="income">{formatCurrency(summary.currentMonthIncome)}</h3>
         </div>
       </div>
+
+      {budgetAlerts.length > 0 && (
+        <div className="budget-alerts">
+          <h3 className="chart-title">⚠️ 预算提醒</h3>
+          {budgetAlerts.map((alert) => (
+            <div key={alert.budget.id} className={`budget-alert ${alert.status}`}>
+              <div className="budget-alert-header">
+                <span className="budget-alert-title">
+                  {alert.budget.category ? `${alert.budget.category} 分类预算` : '总体预算'}
+                </span>
+                <span className={`budget-alert-status ${alert.status}`}>
+                  {alert.status === 'exceeded' ? '⚠️ 已超支' : alert.status === 'warning' ? '⚡ 接近预算' : '✅ 正常'}
+                </span>
+              </div>
+              <div className="budget-progress">
+                <div className="budget-progress-bar">
+                  <div 
+                    className={`budget-progress-fill ${alert.status}`} 
+                    style={{ width: `${Math.min(alert.percentage, 100)}%` }}
+                  />
+                </div>
+                <span className="budget-progress-text">
+                  {formatCurrency(alert.spent)} / {formatCurrency(alert.budget.amount)} ({alert.percentage.toFixed(1)}%)
+                </span>
+              </div>
+              <div className="budget-alert-footer">
+                <span className={alert.remaining >= 0 ? 'remaining-positive' : 'remaining-negative'}>
+                  {alert.remaining >= 0 
+                    ? `剩余 ${formatCurrency(alert.remaining)}` 
+                    : `超支 ${formatCurrency(Math.abs(alert.remaining))}`}
+                </span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       <div className="chart-container">
         <div className="chart-header">

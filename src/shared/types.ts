@@ -105,3 +105,19 @@ export interface TransactionListResponse {
   page: number;
   pageSize: number;
 }
+
+export interface Budget {
+  id: string;
+  year_month: string;
+  amount: number;
+  category: string | null;
+  created_at: string;
+}
+
+export interface BudgetAlert {
+  budget: Budget;
+  spent: number;
+  remaining: number;
+  percentage: number;
+  status: 'ok' | 'warning' | 'exceeded';
+}

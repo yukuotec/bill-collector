@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { DuplicateReviewItem, Summary, SummaryQuery, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Summary, SummaryQuery, TransactionListResponse, TransactionQuery } from '../shared/types';
 
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (filters: { name: string; extensions: string[] }[]) => ipcRenderer.invoke('select-file', filters),
@@ -15,4 +15,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   exportCSV: () => ipcRenderer.invoke('export-csv'),
   exportExcel: () => ipcRenderer.invoke('export-excel'),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),
+  getBudgets: (): Promise<Budget[]> => ipcRenderer.invoke('get-budgets'),
+  setBudget: (id: string, yearMonth: string, amount: number, category: string | null) => ipcRenderer.invoke('set-budget', id, yearMonth, amount, category),
+  deleteBudget: (id: string) => ipcRenderer.invoke('delete-budget', id),
+  getBudgetAlerts: (yearMonth?: string): Promise<BudgetAlert[]> => ipcRenderer.invoke('get-budget-alerts', yearMonth),
 });

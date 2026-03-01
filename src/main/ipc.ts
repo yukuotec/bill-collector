@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, insertTransactions, saveDatabase } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -13,7 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { DuplicateReviewItem, DuplicateType, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 
 type Source = TransactionSource;
@@ -985,5 +985,52 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     saveDatabase();
     fs.copyFileSync(sourcePath, result.filePath);
     return result.filePath;
+  });
+
+  ipcMain.handle('get-budgets', async (): Promise<Budget[]> => {
+    return getBudgets();
+  });
+
+  ipcMain.handle('set-budget', async (_, id: string, yearMonth: string, amount: number, category: string | null) => {
+    setBudget(id, yearMonth, amount, category);
+    return true;
+  });
+
+  ipcMain.handle('delete-budget', async (_, id: string) => {
+    deleteBudget(id);
+    return true;
+  });
+
+  ipcMain.handle('get-budget-alerts', async (_, yearMonth?: string): Promise<BudgetAlert[]> => {
+    const budgets = getBudgets();
+    const now = new Date();
+    const targetYearMonth = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    const alerts: BudgetAlert[] = [];
+    
+    for (const budget of budgets) {
+      if (budget.year_month === targetYearMonth) {
+        const spent = getBudgetSpending(budget.year_month, budget.category);
+        const remaining = budget.amount - spent;
+        const percentage = budget.amount > 0 ? (spent / budget.amount) * 100 : 100;
+        
+        let status: 'ok' | 'warning' | 'exceeded' = 'ok';
+        if (percentage >= 100) {
+          status = 'exceeded';
+        } else if (percentage >= 80) {
+          status = 'warning';
+        }
+        
+        alerts.push({
+          budget,
+          spent,
+          remaining,
+          percentage,
+          status,
+        });
+      }
+    }
+    
+    return alerts;
   });
 }

@@ -6,7 +6,7 @@ export interface DrilldownQuery {
   drill?: boolean;
 }
 
-export type AppPage = 'dashboard' | 'import' | 'transactions';
+export type AppPage = 'dashboard' | 'budgets' | 'import' | 'transactions';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 

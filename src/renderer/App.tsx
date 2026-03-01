@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
-import { DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
 import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
 import Transactions from './pages/Transactions';
+import Budgets from './pages/Budgets';
 
 declare global {
   interface Window {
@@ -39,12 +40,17 @@ declare global {
       exportCSV: () => Promise<string | null>;
       exportExcel: () => Promise<string | null>;
       backupDatabase: () => Promise<string | null>;
+      getBudgets: () => Promise<Budget[]>;
+      setBudget: (id: string, yearMonth: string, amount: number, category: string | null) => Promise<boolean>;
+      deleteBudget: (id: string) => Promise<boolean>;
+      getBudgetAlerts: (yearMonth?: string) => Promise<BudgetAlert[]>;
     };
   }
 }
 
 const navItems = [
   { page: 'dashboard', label: '仪表盘', icon: '📊' },
+  { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'import', label: '导入', icon: '📥' },
   { page: 'transactions', label: '交易记录', icon: '📋' },
 ] as const;
@@ -97,6 +103,7 @@ export default function App() {
             }}
           />
         )}
+        {currentPage === 'budgets' && <Budgets />}
         {currentPage === 'import' && <Import />}
         {currentPage === 'transactions' && (
           <Transactions
