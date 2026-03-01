@@ -175,6 +175,7 @@ expense-tracker/
 - [x] Dashboard charts (trend, pie chart, top merchants)
 - [x] Export functionality (CSV + Excel .xlsx)
 - [x] Manual category override (dropdown in transaction list)
+- [x] Inline notes editing (click to edit)
 
 ### Phase 4 (Enhanced)
 - [x] CLI tool (import/list/export/summary/backup)
