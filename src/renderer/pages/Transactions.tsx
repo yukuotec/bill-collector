@@ -49,6 +49,9 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [sortBy, setSortBy] = useState<TransactionSortBy>('date');
   const [sortOrder, setSortOrder] = useState<SortOrder>('desc');
   const requestIdRef = useRef(0);
+  const [editableNotes, setEditableNotes] = useState<string | null>(null);
+  const [tempNotes, setTempNotes] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
   const [filter, setFilter] = useState<FilterState>({
     startDate: '',
     endDate: '',
@@ -140,6 +143,32 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const handleCategoryChange = async (id: string, category: string) => {
     await window.electronAPI.updateCategory(id, category);
     await loadTransactions();
+  };
+
+  const startEditNotes = (id: string, currentNotes: string | null | undefined) => {
+    setEditableNotes(id);
+    setTempNotes(currentNotes || '');
+    setTimeout(() => inputRef.current?.focus(), 0);
+  };
+
+  const cancelEditNotes = () => {
+    setEditableNotes(null);
+    setTempNotes('');
+  };
+
+  const saveNotes = async (id: string) => {
+    await window.electronAPI.updateNotes(id, tempNotes);
+    setEditableNotes(null);
+    setTempNotes('');
+    await loadTransactions();
+  };
+
+  const handleNotesKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter') {
+      saveNotes(id);
+    } else if (e.key === 'Escape') {
+      cancelEditNotes();
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -358,7 +387,21 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
                 </td>
                 <td>{txn.counterparty || '-'}</td>
                 <td>{txn.description || '-'}</td>
-                <td>{txn.notes || '-'}</td>
+                <td onClick={() => startEditNotes(txn.id, txn.notes)}>
+                  {editableNotes === txn.id ? (
+                    <input
+                      ref={inputRef}
+                      className="notes-input"
+                      value={tempNotes}
+                      onChange={(e) => setTempNotes(e.target.value)}
+                      onBlur={() => saveNotes(txn.id)}
+                      onKeyDown={(e) => handleNotesKeyDown(e, txn.id)}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                  ) : (
+                    <span className="editable-notes">{txn.notes || '-'}</span>
+                  )}
+                </td>
                 <td>
                   <select value={txn.category || '其他'} onChange={(e) => handleCategoryChange(txn.id, e.target.value)}>
                     {Object.keys(CATEGORIES).map((cat) => (
