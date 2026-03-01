@@ -32,6 +32,86 @@ const TYPE_LABELS: Record<string, string> = {
   transfer: '转账',
 };
 
+// Helper functions to calculate date ranges
+function getStartOfWeek(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay();
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+  return new Date(d.setDate(diff));
+}
+
+function getEndOfWeek(date: Date): Date {
+  const start = getStartOfWeek(date);
+  return new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000);
+}
+
+function getStartOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), 1);
+}
+
+function getEndOfMonth(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth() + 1, 0);
+}
+
+function getStartOfYear(date: Date): Date {
+  return new Date(date.getFullYear(), 0, 1);
+}
+
+function getEndOfYear(date: Date): Date {
+  return new Date(date.getFullYear(), 11, 31);
+}
+
+function formatDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+function getThisWeekRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  return {
+    startDate: formatDate(getStartOfWeek(now)),
+    endDate: formatDate(getEndOfWeek(now)),
+  };
+}
+
+function getLastWeekRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  const lastWeekStart = new Date(getStartOfWeek(now).getTime() - 7 * 24 * 60 * 60 * 1000);
+  const lastWeekEnd = new Date(getEndOfWeek(now).getTime() - 7 * 24 * 60 * 60 * 1000);
+  return {
+    startDate: formatDate(lastWeekStart),
+    endDate: formatDate(lastWeekEnd),
+  };
+}
+
+function getThisMonthRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  return {
+    startDate: formatDate(getStartOfMonth(now)),
+    endDate: formatDate(getEndOfMonth(now)),
+  };
+}
+
+function getLastMonthRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const lastMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+  return {
+    startDate: formatDate(lastMonthStart),
+    endDate: formatDate(lastMonthEnd),
+  };
+}
+
+function getThisYearRange(): { startDate: string; endDate: string } {
+  const now = new Date();
+  return {
+    startDate: formatDate(getStartOfYear(now)),
+    endDate: formatDate(getEndOfYear(now)),
+  };
+}
+
 function isDuplicate(txn: Transaction): boolean {
   return txn.is_duplicate === 1 || txn.is_duplicate === true;
 }
@@ -52,9 +132,10 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [editableNotes, setEditableNotes] = useState<string | null>(null);
   const [tempNotes, setTempNotes] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const defaultThisMonth = getThisMonthRange();
   const [filter, setFilter] = useState<FilterState>({
-    startDate: '',
-    endDate: '',
+    startDate: defaultThisMonth.startDate,
+    endDate: defaultThisMonth.endDate,
     category: '',
     merchant: '',
     source: '',
@@ -262,6 +343,24 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           结束日期
           <input type="date" value={filter.endDate} onChange={(e) => updateFilter({ endDate: e.target.value })} />
         </label>
+
+        <div className="quick-filters">
+          <button className="btn-secondary" onClick={() => updateFilter(getThisWeekRange())}>
+            本周
+          </button>
+          <button className="btn-secondary" onClick={() => updateFilter(getLastWeekRange())}>
+            上周
+          </button>
+          <button className="btn-secondary" onClick={() => updateFilter(getThisMonthRange())}>
+            本月
+          </button>
+          <button className="btn-secondary" onClick={() => updateFilter(getLastMonthRange())}>
+            上月
+          </button>
+          <button className="btn-secondary" onClick={() => updateFilter(getThisYearRange())}>
+            今年
+          </button>
+        </div>
 
         <select value={filter.category} onChange={(e) => updateFilter({ category: e.target.value })}>
           <option value="">所有分类</option>
