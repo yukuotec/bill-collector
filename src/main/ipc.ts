@@ -934,6 +934,14 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     return true;
   });
 
+  ipcMain.handle('update-notes', async (_, id: string, notes: string) => {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    db.run('UPDATE transactions SET notes = ?, updated_at = ? WHERE id = ?', [notes || null, now, id]);
+    saveDatabase();
+    return true;
+  });
+
   ipcMain.handle('delete-transaction', async (_, id: string) => {
     const db = getDatabase();
     db.run('DELETE FROM transactions WHERE id = ?', [id]);

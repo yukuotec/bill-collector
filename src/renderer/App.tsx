@@ -34,6 +34,7 @@ declare global {
       getDuplicateTransactions: () => Promise<DuplicateReviewItem[]>;
       resolveDuplicate: (id: string, action: 'keep' | 'merge') => Promise<boolean>;
       updateCategory: (id: string, category: string) => Promise<boolean>;
+      updateNotes: (id: string, notes: string) => Promise<boolean>;
       deleteTransaction: (id: string) => Promise<boolean>;
       exportCSV: () => Promise<string | null>;
       exportExcel: () => Promise<string | null>;

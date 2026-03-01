@@ -10,6 +10,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getDuplicateTransactions: (): Promise<DuplicateReviewItem[]> => ipcRenderer.invoke('get-duplicate-transactions'),
   resolveDuplicate: (id: string, action: 'keep' | 'merge') => ipcRenderer.invoke('resolve-duplicate', id, action),
   updateCategory: (id: string, category: string) => ipcRenderer.invoke('update-category', id, category),
+  updateNotes: (id: string, notes: string) => ipcRenderer.invoke('update-notes', id, notes),
   deleteTransaction: (id: string) => ipcRenderer.invoke('delete-transaction', id),
   exportCSV: () => ipcRenderer.invoke('export-csv'),
   exportExcel: () => ipcRenderer.invoke('export-excel'),

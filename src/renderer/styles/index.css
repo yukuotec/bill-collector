@@ -1035,3 +1035,31 @@ select {
   border-radius: 8px;
   display: inline-block;
 }
+
+/* Inline Edit - Notes */
+.editable-notes {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 4px;
+  transition: background-color var(--transition-fast);
+}
+
+.editable-notes:hover {
+  background-color: var(--primary-light);
+}
+
+.notes-input {
+  width: 100%;
+  padding: 4px 8px;
+  border: 2px solid var(--primary);
+  border-radius: 4px;
+  font-size: inherit;
+  font-family: inherit;
+  outline: none;
+  background: white;
+  min-width: 80px;
+}
+
+.notes-input:focus {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+}
