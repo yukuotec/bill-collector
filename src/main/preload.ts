@@ -12,7 +12,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateCategory: (id: string, category: string) => ipcRenderer.invoke('update-category', id, category),
   updateNotes: (id: string, notes: string) => ipcRenderer.invoke('update-notes', id, notes),
   deleteTransaction: (id: string) => ipcRenderer.invoke('delete-transaction', id),
-  exportCSV: () => ipcRenderer.invoke('export-csv'),
+  exportCSV: (ids?: string[]) => ipcRenderer.invoke('export-csv', ids),
   exportExcel: () => ipcRenderer.invoke('export-excel'),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),
   getBudgets: (): Promise<Budget[]> => ipcRenderer.invoke('get-budgets'),

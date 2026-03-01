@@ -37,7 +37,7 @@ declare global {
       updateCategory: (id: string, category: string) => Promise<boolean>;
       updateNotes: (id: string, notes: string) => Promise<boolean>;
       deleteTransaction: (id: string) => Promise<boolean>;
-      exportCSV: () => Promise<string | null>;
+      exportCSV: (ids?: string[]) => Promise<string | null>;
       exportExcel: () => Promise<string | null>;
       backupDatabase: () => Promise<string | null>;
       getBudgets: () => Promise<Budget[]>;

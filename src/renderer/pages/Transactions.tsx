@@ -132,6 +132,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [editableNotes, setEditableNotes] = useState<string | null>(null);
   const [tempNotes, setTempNotes] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const defaultThisMonth = getThisMonthRange();
   const [filter, setFilter] = useState<FilterState>({
     startDate: defaultThisMonth.startDate,
@@ -302,6 +303,33 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
     onReplaceSearch('');
   };
 
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedIds(new Set(transactions.map((txn) => txn.id)));
+    } else {
+      setSelectedIds(new Set());
+    }
+  };
+
+  const handleSelectTransaction = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedIds(newSelected);
+  };
+
+  const handleExportSelected = async () => {
+    if (selectedIds.size === 0) return;
+    const ids = Array.from(selectedIds);
+    await window.electronAPI.exportCSV(ids);
+  };
+
+  const isAllSelected = transactions.length > 0 && transactions.every((txn) => selectedIds.has(txn.id));
+  const isPartialSelected = transactions.some((txn) => selectedIds.has(txn.id)) && !isAllSelected;
+
   return (
     <div className="transactions">
       <div className="page-header">
@@ -443,8 +471,19 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
       )}
 
       <div className="table-toolbar">
-        <div className="table-meta">共 {total} 条</div>
-        <div className="sort-controls">
+        <div className="table-meta">
+          {selectedIds.size > 0 ? (
+            <span className="selected-count">已选择 {selectedIds.size} 条</span>
+          ) : (
+            <span>共 {total} 条</span>
+          )}
+        </div>
+        <div className="toolbar-actions">
+          {selectedIds.size > 0 && (
+            <button className="btn-primary" onClick={handleExportSelected}>
+              导出选中
+            </button>
+          )}
           <button className="btn-secondary" onClick={() => toggleSort('date')}>
             日期排序 {sortBy === 'date' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
           </button>
@@ -458,6 +497,16 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         <table className="table">
           <thead>
             <tr>
+              <th>
+                <input
+                  type="checkbox"
+                  checked={isAllSelected}
+                  ref={(el) => {
+                    if (el) el.indeterminate = isPartialSelected;
+                  }}
+                  onChange={(e) => handleSelectAll(e.target.checked)}
+                />
+              </th>
               <th>日期</th>
               <th>类型</th>
               <th>金额</th>
@@ -474,11 +523,18 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           <tbody>
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={11}>暂无数据</td>
+                <td colSpan={12}>暂无数据</td>
               </tr>
             )}
             {transactions.map((txn) => (
               <tr key={txn.id}>
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.has(txn.id)}
+                    onChange={(e) => handleSelectTransaction(txn.id, e.target.checked)}
+                  />
+                </td>
                 <td>{txn.date}</td>
                 <td>{TYPE_LABELS[txn.type] || txn.type}</td>
                 <td className={txn.type === 'income' ? 'income' : 'expense'}>
