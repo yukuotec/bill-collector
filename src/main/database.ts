@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { Transaction } from '../shared/types';
+import { Budget, Transaction } from '../shared/types';
 
 let db: any = null;
 let dbPath: string = '';
@@ -47,6 +47,17 @@ function ensureSchema(): void {
       merged_with TEXT,
       created_at TEXT NOT NULL,
       updated_at TEXT NOT NULL
+    )
+  `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS budgets (
+      id TEXT PRIMARY KEY,
+      year_month TEXT NOT NULL,
+      amount REAL NOT NULL,
+      category TEXT,
+      created_at TEXT NOT NULL,
+      UNIQUE(year_month, category)
     )
   `);
 
@@ -185,6 +196,72 @@ export function saveDatabase(): void {
     const buffer = Buffer.from(data);
     fs.writeFileSync(dbPath, buffer);
   }
+}
+
+export function getBudgets(): Budget[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM budgets ORDER BY year_month DESC, category ASC');
+  const results: Budget[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as Budget);
+  }
+  stmt.free();
+  return results;
+}
+
+export function setBudget(id: string, yearMonth: string, amount: number, category: string | null): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  
+  // Check if budget exists for this year_month and category
+  const existingStmt = database.prepare('SELECT id FROM budgets WHERE year_month = ? AND (category = ? OR (category IS NULL AND ? IS NULL))');
+  existingStmt.bind([yearMonth, category, category]);
+  
+  if (existingStmt.step()) {
+    // Update existing
+    existingStmt.free();
+    database.run('UPDATE budgets SET amount = ?, created_at = ? WHERE year_month = ? AND (category = ? OR (category IS NULL AND ? IS NULL))', 
+      [amount, now, yearMonth, category, category]);
+  } else {
+    // Insert new
+    existingStmt.free();
+    database.run('INSERT INTO budgets (id, year_month, amount, category, created_at) VALUES (?, ?, ?, ?, ?)',
+      [id, yearMonth, amount, category, now]);
+  }
+  saveDatabase();
+}
+
+export function deleteBudget(id: string): void {
+  const database = getDatabase();
+  database.run('DELETE FROM budgets WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function getBudgetSpending(yearMonth: string, category: string | null): number {
+  const database = getDatabase();
+  const startDate = `${yearMonth}-01`;
+  const endDate = `${yearMonth}-01`; // Will be handled by strftime
+  
+  let sql: string;
+  let params: (string | null)[];
+  
+  if (category) {
+    sql = `SELECT SUM(amount) as total FROM transactions WHERE type = 'expense' AND strftime('%Y-%m', date) = ? AND category = ?`;
+    params = [yearMonth, category];
+  } else {
+    sql = `SELECT SUM(amount) as total FROM transactions WHERE type = 'expense' AND strftime('%Y-%m', date) = ?`;
+    params = [yearMonth];
+  }
+  
+  const stmt = database.prepare(sql);
+  stmt.bind(params);
+  let total = 0;
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { total?: number };
+    total = Number(row.total ?? 0);
+  }
+  stmt.free();
+  return total;
 }
 
 export function closeDatabase(): void {
