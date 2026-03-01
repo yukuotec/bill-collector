@@ -949,8 +949,14 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     return true;
   });
 
-  ipcMain.handle('export-csv', async () => {
-    const transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+  ipcMain.handle('export-csv', async (_, ids?: string[]) => {
+    let transactions;
+    if (ids && ids.length > 0) {
+      const placeholders = ids.map(() => '?').join(',');
+      transactions = queryAll(`SELECT * FROM transactions WHERE id IN (${placeholders}) ORDER BY date DESC, created_at DESC`, ids);
+    } else {
+      transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+    }
     const result = await dialog.showSaveDialog({
       filters: [{ name: 'CSV Files', extensions: ['csv'] }],
       defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.csv`,
