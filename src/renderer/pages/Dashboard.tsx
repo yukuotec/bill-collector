@@ -5,6 +5,23 @@ import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tool
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
 
+const CATEGORY_ICONS: Record<string, string> = {
+  '餐饮': '🍽️',
+  '购物': '🛍️',
+  '交通': '🚗',
+  '住宿': '🏨',
+  '娱乐': '🎮',
+  '教育': '📚',
+  '医疗': '💊',
+  '通讯': '📱',
+  '住房': '🏠',
+  '投资': '💰',
+  '工资': '💵',
+  '奖金': '🎁',
+  '转账': '🔄',
+  '其他': '📦',
+};
+
 interface DashboardProps {
   onDrilldown: (query: DrilldownQuery) => void;
 }
@@ -35,6 +52,7 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
     };
 
     void loadSummary();
+
     return () => {
       cancelled = true;
     };
@@ -76,10 +94,14 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
 
   return (
     <div className="dashboard">
+      <div className="page-header">
+        <h2>仪表盘</h2>
+        <p className="page-subtitle">查看您的支出概览和统计</p>
+      </div>
+      
       <div className="dashboard-header">
-        <h2>年度与月度汇总</h2>
         <div className="filter-inline">
-          <label htmlFor="summary-year">年份</label>
+          <label htmlFor="summary-year">📅 选择年份</label>
           <select id="summary-year" value={selectedYear} onChange={(e) => setSelectedYear(Number(e.target.value))}>
             {summary.availableYears.map((year) => (
               <option key={year} value={year}>
@@ -91,30 +113,37 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
       </div>
 
       <div className="summary-cards">
-        <div className="summary-card">
+        <div className="summary-card expense">
+          <span className="summary-icon">💸</span>
           <p>{summary.year} 年支出</p>
           <h3 className="expense">{formatCurrency(summary.yearlyExpense)}</h3>
         </div>
-        <div className="summary-card">
+        <div className="summary-card income">
+          <span className="summary-icon">💰</span>
           <p>{summary.year} 年收入</p>
           <h3 className="income">{formatCurrency(summary.yearlyIncome)}</h3>
         </div>
-        <div className="summary-card">
+        <div className={`summary-card ${summary.yearlyNet >= 0 ? 'income' : 'expense'}`}>
+          <span className="summary-icon">{summary.yearlyNet >= 0 ? '📈' : '📉'}</span>
           <p>{summary.year} 年净额</p>
           <h3 className={summary.yearlyNet >= 0 ? 'income' : 'expense'}>{formatCurrency(summary.yearlyNet)}</h3>
         </div>
-        <div className="summary-card">
+        <div className="summary-card expense">
+          <span className="summary-icon">🍽️</span>
           <p>{summary.currentMonth} 支出</p>
           <h3 className="expense">{formatCurrency(summary.currentMonthExpense)}</h3>
         </div>
-        <div className="summary-card">
+        <div className="summary-card income">
+          <span className="summary-icon">🎁</span>
           <p>{summary.currentMonth} 收入</p>
           <h3 className="income">{formatCurrency(summary.currentMonthIncome)}</h3>
         </div>
       </div>
 
-      <h2>月度趋势（最近12个月）</h2>
       <div className="chart-container">
+        <div className="chart-header">
+          <h3 className="chart-title">📈 月度趋势（最近12个月）</h3>
+        </div>
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={lineData}>
             <CartesianGrid strokeDasharray="3 3" />
@@ -122,16 +151,19 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
             <YAxis />
             <Tooltip formatter={(value: number) => formatCurrency(value)} />
             <Legend />
-            <Line type="monotone" dataKey="expense" stroke="#f44336" name="支出" />
-            <Line type="monotone" dataKey="income" stroke="#4caf50" name="收入" />
+            <Line type="monotone" dataKey="expense" stroke="#f44336" name="支出" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
+            <Line type="monotone" dataKey="income" stroke="#4caf50" name="收入" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
       </div>
 
-      <h2>分类占比</h2>
       <div className="chart-container">
+        <div className="chart-header">
+          <h3 className="chart-title">🥧 分类占比</h3>
+          <span className="chart-subtitle">点击分类查看详情</span>
+        </div>
         {pieData.length === 0 ? (
-          <div>暂无分类支出数据</div>
+          <div className="empty-state">暂无分类支出数据</div>
         ) : (
           <ResponsiveContainer width="100%" height={300}>
             <PieChart>
@@ -140,7 +172,7 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={({ name, percent }) => `${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
+                label={({ name, percent }) => `${CATEGORY_ICONS[name] || ''} ${name} ${((percent ?? 0) * 100).toFixed(0)}%`}
                 outerRadius={90}
                 fill="#8884d8"
                 dataKey="value"
@@ -163,40 +195,48 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
         )}
       </div>
 
-      <h2>Top 商家</h2>
-      <table className="table">
-        <thead>
-          <tr>
-            <th>商家</th>
-            <th>次数</th>
-            <th>总额</th>
-          </tr>
-        </thead>
-        <tbody>
-          {summary.topMerchants.map((merchant) => (
-            <tr
-              key={merchant.counterparty}
-              onClick={() =>
-                onDrilldown({
-                  ...range,
-                  merchant: merchant.counterparty,
-                  drill: true,
-                })
-              }
-              className="drillable-row"
-            >
-              <td>{merchant.counterparty}</td>
-              <td>{merchant.count} 次</td>
-              <td>{formatCurrency(merchant.total)}</td>
-            </tr>
-          ))}
-          {summary.topMerchants.length === 0 && (
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">🏪 Top 商家</h3>
+          <span className="card-subtitle">消费频次最高的商家</span>
+        </div>
+        <table className="table">
+          <thead>
             <tr>
-              <td colSpan={3}>暂无商家数据</td>
+              <th>商家</th>
+              <th>交易次数</th>
+              <th>消费总额</th>
             </tr>
-          )}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {summary.topMerchants.map((merchant) => (
+              <tr
+                key={merchant.counterparty}
+                onClick={() =>
+                  onDrilldown({
+                    ...range,
+                    merchant: merchant.counterparty,
+                    drill: true,
+                  })
+                }
+                className="drillable-row"
+              >
+                <td className="merchant-cell">
+                  <span className="merchant-icon">🏪</span>
+                  {merchant.counterparty}
+                </td>
+                <td><span className="count-badge">{merchant.count} 次</span></td>
+                <td className="amount expense">{formatCurrency(merchant.total)}</td>
+              </tr>
+            ))}
+            {summary.topMerchants.length === 0 && (
+              <tr>
+                <td colSpan={3} className="empty-cell">暂无商家数据</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }

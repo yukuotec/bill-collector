@@ -194,7 +194,10 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
 
   return (
     <div className="transactions">
-      <h2>交易记录</h2>
+      <div className="page-header">
+        <h2>交易记录</h2>
+        <p className="page-subtitle">查看和管理所有交易明细</p>
+      </div>
 
       {drillContextVisible && (
         <div className="drilldown-chips">

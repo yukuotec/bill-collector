@@ -124,6 +124,13 @@ export default function Import() {
     }
   };
 
+  const SOURCE_ICONS: Record<Source, string> = {
+    alipay: '💳',
+    wechat: '💬',
+    yunshanfu: '🏦',
+    bank: '📄',
+  };
+
   const handleImport = async () => {
     if (!canImport) return;
 
@@ -171,100 +178,164 @@ export default function Import() {
     }
   };
 
+  const SOURCE_DESCRIPTIONS: Record<Source, string> = {
+    alipay: '支付宝账单导出',
+    wechat: '微信支付账单',
+    yunshanfu: '云闪付交易明细',
+    bank: '银行流水账单',
+  };
+
   return (
     <div className="import">
-      <h2>导入账单</h2>
+      {/* Page Header */}
+      <div className="page-header">
+        <h2>📥 导入账单</h2>
+        <p className="page-subtitle">从支付宝、微信、云闪付或银行导入账单</p>
+      </div>
 
-      <div className="import-controls">
-        <label>
-          数据源：
-          <select value={source} onChange={(event) => handleSourceChange(event.target.value as Source)} disabled={importing || previewLoading}>
-            {Object.entries(SOURCE_LABELS).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
+      {/* Source Selection */}
+      <div className="section-spacing">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">选择数据源</h3>
+            <p className="card-subtitle">请先选择账单来源，再导入对应格式的文件</p>
+          </div>
+          
+          <div className="import-source-grid">
+            {(Object.keys(SOURCE_LABELS) as Source[]).map((src) => (
+              <button
+                key={src}
+                onClick={() => handleSourceChange(src)}
+                disabled={importing || previewLoading}
+                className={`source-card ${source === src ? 'active' : ''}`}
+              >
+                <div className="source-icon-large">{SOURCE_ICONS[src]}</div>
+                <div className="source-info">
+                  <span className="source-label">{SOURCE_LABELS[src]}</span>
+                  <span className="source-description">{SOURCE_DESCRIPTIONS[src]}</span>
+                </div>
+              </button>
             ))}
-          </select>
-        </label>
-
-        <button onClick={handleChooseFile} disabled={importing || previewLoading} className="btn-primary">
-          选择账单文件
-        </button>
-      </div>
-
-      <div
-        className={`dropzone ${dragging ? 'dragging' : ''}`}
-        onDragOver={(event) => {
-          event.preventDefault();
-          setDragging(true);
-        }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={handleDrop}
-      >
-        <p>拖拽账单文件到此处</p>
-        <p className="dropzone-tip">支持 .csv / .xlsx / .pdf / .html / .png</p>
-        <p className="dropzone-tip">当前来源：{SOURCE_LABELS[source]}</p>
-      </div>
-
-      {filePath && (
-        <div className="import-selected-file">
-          <strong>已选文件：</strong>
-          <span>{fileName}</span>
+          </div>
         </div>
-      )}
+      </div>
 
-      <div className="import-buttons">
-        <button onClick={handleImport} disabled={!canImport} className="btn-primary">
-          {importing ? '导入中...' : '开始导入'}
-        </button>
+      {/* File Drop Zone */}
+      <div className="section-spacing">
+        <div
+          className={`dropzone ${dragging ? 'dragging' : ''}`}
+          onDragOver={(event) => {
+            event.preventDefault();
+            setDragging(true);
+          }}
+          onDragLeave={() => setDragging(false)}
+          onDrop={handleDrop}
+        >
+          <div className="dropzone-icon">📤</div>
+          <p className="dropzone-main">拖拽账单文件到此处</p>
+          <p className="dropzone-tip">支持 .csv / .xlsx / .pdf / .html / .png 格式</p>
+          <p className="dropzone-current">当前来源：{SOURCE_ICONS[source]} {SOURCE_LABELS[source]}</p>
+          
+          <button 
+            onClick={handleChooseFile} 
+            disabled={importing || previewLoading} 
+            className="btn-primary dropzone-btn"
+          >
+            📂 选择文件
+          </button>
+        </div>
+      </div>
+
+      {/* Selected File & Import Button */}
+      <div className="section-spacing">
+        {filePath && (
+          <div className="import-selected-file">
+            <div className="file-icon">📄</div>
+            <div className="file-info">
+              <div className="file-name">{fileName}</div>
+              <div className="file-size">{SOURCE_LABELS[source]} 账单</div>
+            </div>
+            <button 
+              className="btn-secondary btn-sm" 
+              onClick={() => { setFilePath(''); setFileName(''); setPreviewResult(null); }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
+        <div className="import-buttons">
+          <button 
+            onClick={handleImport} 
+            disabled={!canImport} 
+            className="btn-primary btn-lg"
+          >
+            {importing ? (
+              <>⏳ 导入中...</>
+            ) : (
+              <>🚀 开始导入</>
+            )}
+          </button>
+        </div>
       </div>
 
       {previewLoading && <div className="message">{parseStatus || '正在解析账单...'}</div>}
 
-      {previewResult && (
-        <div className="preview-card">
-          <h3>解析结果</h3>
-          <p>总条数：{previewResult.parsedCount}</p>
-          {previewResult.preview.length > 0 ? (
-            <table className="table preview-table">
-              <thead>
-                <tr>
-                  <th>日期</th>
-                  <th>类型</th>
-                  <th>金额</th>
-                  <th>交易对方</th>
-                  <th>说明</th>
-                </tr>
-              </thead>
-              <tbody>
-                {previewResult.preview.map((item, index) => (
-                  <tr key={`${item.date}-${item.amount}-${index}`}>
-                    <td>{item.date}</td>
-                    <td>{item.type}</td>
-                    <td>{item.amount.toFixed(2)}</td>
-                    <td>{item.counterparty || '-'}</td>
-                    <td>{item.description || '-'}</td>
+      {/* Preview Section */}
+      <div className="section-spacing">
+        {previewResult && (
+          <div className="preview-card">
+            <h3>📊 解析结果预览</h3>
+            <p className="preview-summary">总条数：{previewResult.parsedCount}</p>
+            {previewResult.preview.length > 0 ? (
+              <table className="table preview-table">
+                <thead>
+                  <tr>
+                    <th>日期</th>
+                    <th>类型</th>
+                    <th>金额</th>
+                    <th>交易对方</th>
+                    <th>说明</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          ) : (
-            <p>暂无可预览记录</p>
-          )}
-        </div>
-      )}
+                </thead>
+                <tbody>
+                  {previewResult.preview.map((item, index) => (
+                    <tr key={`${item.date}-${item.amount}-${index}`}>
+                      <td>{item.date}</td>
+                      <td>{item.type}</td>
+                      <td>{item.amount.toFixed(2)}</td>
+                      <td>{item.counterparty || '-'}</td>
+                      <td>{item.description || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <p>暂无可预览记录</p>
+            )}
+          </div>
+        )}
+      </div>
 
-      <h2>导出与备份</h2>
-      <div className="import-buttons">
-        <button onClick={handleExportCSV} className="btn-secondary">
-          导出 CSV
-        </button>
-        <button onClick={handleExportExcel} className="btn-secondary">
-          导出 Excel (.xlsx)
-        </button>
-        <button onClick={handleBackup} className="btn-secondary">
-          备份数据库
-        </button>
+      {/* Export & Backup Section */}
+      <div className="section-spacing">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">📦 导出与备份</h3>
+            <p className="card-subtitle">导出数据或创建数据库备份</p>
+          </div>
+          <div className="import-buttons">
+            <button onClick={handleExportCSV} className="btn-secondary">
+              📄 导出 CSV
+            </button>
+            <button onClick={handleExportExcel} className="btn-secondary">
+              📗 导出 Excel (.xlsx)
+            </button>
+            <button onClick={handleBackup} className="btn-secondary">
+              💾 备份数据库
+            </button>
+          </div>
+        </div>
       </div>
 
       {message && <div className="message">{message}</div>}

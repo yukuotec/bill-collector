@@ -42,6 +42,12 @@ declare global {
   }
 }
 
+const navItems = [
+  { page: 'dashboard', label: '仪表盘', icon: '📊' },
+  { page: 'import', label: '导入', icon: '📥' },
+  { page: 'transactions', label: '交易记录', icon: '📋' },
+] as const;
+
 export default function App() {
   const [locationState, setLocationState] = useState(() => parseHashLocation(window.location.hash));
 
@@ -65,17 +71,21 @@ export default function App() {
   return (
     <div className="app">
       <nav className="nav">
-        <h1>记账小助手</h1>
+        <div className="nav-brand">
+          <div className="nav-brand-icon">💰</div>
+          <span>记账小助手</span>
+        </div>
         <div className="nav-links">
-          <button onClick={() => navigate('dashboard')} className={currentPage === 'dashboard' ? 'active' : ''}>
-            仪表盘
-          </button>
-          <button onClick={() => navigate('import')} className={currentPage === 'import' ? 'active' : ''}>
-            导入
-          </button>
-          <button onClick={() => navigate('transactions')} className={currentPage === 'transactions' ? 'active' : ''}>
-            交易记录
-          </button>
+          {navItems.map((item) => (
+            <button
+              key={item.page}
+              onClick={() => navigate(item.page)}
+              className={currentPage === item.page ? 'active' : ''}
+            >
+              <span className="icon">{item.icon}</span>
+              <span>{item.label}</span>
+            </button>
+          ))}
         </div>
       </nav>
       <main className="main">
