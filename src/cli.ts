@@ -13,7 +13,7 @@ import { parseBank } from './parsers/bank';
 import { parseWechat } from './parsers/wechat';
 import { parseYunshanfu } from './parsers/yunshanfu';
 import { type DuplicateType, type Transaction, type TransactionSource } from './shared/types';
-import readline from 'readline';
+
 type DbRow = Record<string, unknown>;
 type WatcherLike = {
   on(event: 'add' | 'error', handler: (...args: any[]) => void): WatcherLike;
@@ -312,75 +312,6 @@ interface RefundCandidate {
   description?: string;
 }
 
-
-// Detect duplicates for a batch BEFORE importing
-function detectDuplicateCandidates(
-  db: any,
-  transactions: Transaction[]
-): Map<number, { type: 'exact' | 'same_period' | 'cross_platform'; targetId: string }> {
-  const duplicateMap = new Map<number, { type: 'exact' | 'same_period' | 'cross_platform'; targetId: string }>();
-  
-  for (let i = 0; i < transactions.length; i++) {
-    const result = findDuplicateCandidate(db, transactions[i]);
-    if (result.exactId) {
-      duplicateMap.set(i, { type: 'exact', targetId: result.exactId });
-    } else if (result.pending) {
-      duplicateMap.set(i, { type: result.pending.duplicateType, targetId: result.pending.targetId });
-    }
-  }
-  
-  return duplicateMap;
-}
-
-// Generate duplicate report
-function generateDuplicateReport(
-  totalCount: number,
-  duplicateMap: Map<number, any>
-): { exact: number; samePeriod: number; crossPlatform: number; ratio: number } {
-  let exact = 0;
-  let samePeriod = 0;
-  let crossPlatform = 0;
-  
-  for (const dup of duplicateMap.values()) {
-    if (dup.type === 'exact') exact++;
-    else if (dup.type === 'same_period') samePeriod++;
-    else if (dup.type === 'cross_platform') crossPlatform++;
-  }
-  
-  const duplicateCount = exact + samePeriod + crossPlatform;
-  const ratio = totalCount > 0 ? (duplicateCount / totalCount) * 100 : 0;
-  
-  return { exact, samePeriod, crossPlatform, ratio: Math.round(ratio) };
-}
-
-// Ask user about duplicates
-async function askUserAboutDuplicates(
-  report: { exact: number; samePeriod: number; crossPlatform: number; ratio: number },
-  totalCount: number
-): Promise<'proceed' | 'abandon' | 'skip'> {
-  console.log('\n📊 === 重复检测报告 ===');
-  console.log(`   总记录数: ${totalCount}`);
-  console.log(`   完全重复: ${report.exact}`);
-  console.log(`   同期重复: ${report.samePeriod}`);
-  console.log(`   跨平台重复: ${report.crossPlatform}`);
-  console.log(`   重复比例: ${report.ratio}%`);
-  console.log('======================\n');
-  
-  if (report.ratio >= 80) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await new Promise<string>(resolve => rl.question('⚠️  重复比例超过 80%，是否废弃整批导入? (Y/N): ', resolve));
-    rl.close();
-    return answer.toLowerCase() === 'y' ? 'abandon' : 'skip';
-  } else if (report.exact > 0 || report.samePeriod > 0 || report.crossPlatform > 0) {
-    const rl = readline.createInterface({ input: process.stdin, output: process.stdout });
-    const answer = await new Promise<string>(resolve => rl.question('⚠️  存在重复记录，是否继续导入? (Y/N): ', resolve));
-    rl.close();
-    return answer.toLowerCase() === 'y' ? 'proceed' : 'skip';
-  }
-  
-  return 'proceed';
-}
-
 function isRefundTransaction(txn: Pick<Transaction, 'type' | 'is_refund'>): boolean {
   return txn.is_refund === 1 || txn.is_refund === true;
 }
@@ -462,30 +393,12 @@ function linkRefundTransactions(db: any, importId: string): void {
   }
 }
 
-async function insertTransactions(
+function insertTransactions(
   db: any,
   source: TransactionSource,
   filePath: string,
   transactions: Transaction[]
-): Promise<{ inserted: number; exactMerged: number; samePeriodFlagged: number; crossPlatformFlagged: number }> {
-  // Step 1: Detect all duplicates BEFORE importing
-  const duplicateMap = detectDuplicateCandidates(db, transactions);
-  const report = generateDuplicateReport(transactions.length, duplicateMap);
-  
-  // Step 2: Ask user for confirmation
-  const decision = await askUserAboutDuplicates(report, transactions.length);
-  
-  if (decision === 'abandon') {
-    console.log('❌ 已废弃整批导入');
-    return { inserted: 0, exactMerged: transactions.length, samePeriodFlagged: 0, crossPlatformFlagged: 0 };
-  }
-  
-  if (decision === 'skip') {
-    console.log('⏭️  已跳过导入');
-    return { inserted: 0, exactMerged: 0, samePeriodFlagged: 0, crossPlatformFlagged: 0 };
-  }
-  
-  // Step 3: Proceed with import (skip exact duplicates, mark others)
+): { inserted: number; exactMerged: number; samePeriodFlagged: number; crossPlatformFlagged: number } {
   const now = new Date().toISOString();
   const importId = generateId();
   const stmt = db.prepare(
@@ -499,20 +412,17 @@ async function insertTransactions(
   let samePeriodFlagged = 0;
   let crossPlatformFlagged = 0;
 
-  for (let i = 0; i < transactions.length; i++) {
-    const txn = transactions[i];
-    const dup = duplicateMap.get(i);
-    
-    // Skip exact duplicates
-    if (dup?.type === 'exact') {
+  for (const txn of transactions) {
+    const duplicate = findDuplicateCandidate(db, txn);
+    if (duplicate.exactId) {
       exactMerged += 1;
       continue;
     }
 
-    if (dup?.type === 'same_period') {
+    if (duplicate.pending?.duplicateType === 'same_period') {
       samePeriodFlagged += 1;
     }
-    if (dup?.type === 'cross_platform') {
+    if (duplicate.pending?.duplicateType === 'cross_platform') {
       crossPlatformFlagged += 1;
     }
 
@@ -533,10 +443,10 @@ async function insertTransactions(
       txn.notes || null,
       Number(txn.is_refund ?? 0),
       txn.refund_of ?? null,
-      dup ? 1 : 0,
-      dup?.targetId || null,
-      dup?.type || null,
-      dup?.targetId || null,
+      Number(duplicate.pending ? 1 : 0),
+      duplicate.pending?.duplicateSource || null,
+      duplicate.pending?.duplicateType || null,
+      duplicate.pending?.targetId || null,
       now,
       now,
     ]);
@@ -555,8 +465,6 @@ async function insertTransactions(
 
   linkRefundTransactions(db, importId);
 
-  console.log(`✅ 导入完成: 新增 ${inserted}, 完全重复 ${exactMerged}, 标记重复 ${samePeriodFlagged + crossPlatformFlagged}`);
-  
   return { inserted, exactMerged, samePeriodFlagged, crossPlatformFlagged };
 }
 
@@ -788,10 +696,10 @@ program
   .option('--source <source>', '来源: alipay|wechat|yunshanfu|bank')
   .option('--watch-dir <dir>', '监听目录中的新 CSV 并自动导入')
   .action(async (file: string | undefined, options: { source?: string; watchDir?: string }) => {
-    const importOne = async (db: any, dbPath: string, filePath: string, source: TransactionSource): Promise<void> => {
+    const importOne = (db: any, dbPath: string, filePath: string, source: TransactionSource): void => {
       const content = decodeCsvContent(fs.readFileSync(filePath));
       const transactions = parseTransactionsBySource(content, source);
-      const result = await insertTransactions(db, source, filePath, transactions);
+      const result = insertTransactions(db, source, filePath, transactions);
       saveDatabase(db, dbPath);
       console.log(
         `file=${path.basename(filePath)} source=${source} imported=${result.inserted} exact=${result.exactMerged} same_period=${result.samePeriodFlagged} cross_platform=${result.crossPlatformFlagged} parsed=${transactions.length} db=${dbPath}`
@@ -1195,7 +1103,58 @@ program
     }
   });
 
-program.parseAsync(process.argv).catch((err: unknown) => {
+
+// CLI command to merge sources
+async function handleSourceMerge(options: { id?: string; source?: string }) {
+  const db = await openDatabase();
+  const targetId = options.id;
+  const newSource = options.source;
+  
+  if (!targetId || !newSource) {
+    console.error('Usage: expense-cli merge-source --id <transaction-id> --source <source>');
+    process.exit(1);
+  }
+  
+  const stmt = db.db.prepare('SELECT source FROM transactions WHERE id = ?');
+  stmt.bind([targetId]);
+  
+  if (!stmt.step()) {
+    console.error('Transaction not found: ' + targetId);
+    process.exit(1);
+  }
+  
+  const row = stmt.getAsObject();
+  let currentSource = row.source || '';
+  stmt.free();
+  
+  let sources = [];
+  try {
+    sources = JSON.parse(currentSource);
+    if (!Array.isArray(sources)) {
+      sources = [currentSource];
+    }
+  } catch {
+    sources = currentSource ? [currentSource] : [];
+  }
+  
+  if (!sources.includes(newSource)) {
+    sources.push(newSource);
+    db.db.run('UPDATE transactions SET source = ? WHERE id = ?', [JSON.stringify(sources), targetId]);
+    saveDatabase(db.db, db.dbPath);
+    console.log('Merged source: ' + newSource + ' into transaction ' + targetId);
+  } else {
+    console.log('Source already exists');
+  }
+  
+  db.db.close();
+}
+
+program
+  .command('merge-source')
+  .description('Merge a new source into an existing transaction')
+  .option('--id <id>', 'Transaction ID')
+  .option('--source <source>', 'Source to add')
+  .action(handleSourceMerge);program.parseAsync(process.argv).catch((err: unknown) => {
   const message = err instanceof Error ? err.message : String(err);
   console.error(`Error: ${message}`);
   process.exitCode = 1;
