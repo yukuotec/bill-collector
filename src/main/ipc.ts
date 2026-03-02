@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -22,6 +22,7 @@ type SupportedImportExt = '.csv' | '.xlsx' | '.pdf' | '.html' | '.htm' | '.png';
 interface ImportCsvOptions {
   dryRun?: boolean;
   previewLimit?: number;
+  currency?: string;
 }
 
 interface ImportCsvResult {
@@ -1066,6 +1067,10 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     db.run('UPDATE transactions SET notes = ?, updated_at = ? WHERE id = ?', [notes || null, now, id]);
     saveDatabase();
     return true;
+  });
+
+  ipcMain.handle('update-currency', async (_, id: string, currency: string) => {
+    return updateTransactionCurrency(id, currency);
   });
 
   ipcMain.handle('delete-transaction', async (_, id: string) => {

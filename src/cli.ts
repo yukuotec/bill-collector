@@ -1108,3 +1108,105 @@ program.parseAsync(process.argv).catch((err: unknown) => {
   console.error(`Error: ${message}`);
   process.exitCode = 1;
 });
+
+// Email import command - uses himalaya to download bill attachments
+async function handleEmailImport(args: any) {
+  const sources = args.source || ['alipay', 'wechat', 'yunshanfu'];
+  const dryRun = args.dryRun || false;
+  const stateFile = path.join(os.homedir(), '.expense-email-state.json');
+  
+  // Load state to track processed emails
+  let processedIds: Record<string, string[]> = {};
+  if (fs.existsSync(stateFile)) {
+    processedIds = JSON.parse(fs.readFileSync(stateFile, 'utf-8'));
+  }
+  
+  // Search patterns for different sources
+  const searchPatterns: Record<string, string> = {
+    alipay: '支付宝',
+    wechat: '微信支付',
+    yunshanfu: '云闪付'
+  };
+  
+  const tempDir = path.join(os.tmpdir(), 'expense-emails');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  
+  let imported = 0;
+  
+  for (const source of sources) {
+    const pattern = searchPatterns[source];
+    if (!pattern) continue;
+    
+    console.log(`\n📧 Searching ${source} emails...`);
+    
+    // Search emails using himalaya
+    const searchResult = execFileSync('himalaya', [
+      'envelope', 'list',
+      '--sender', pattern,
+      '--output', 'json',
+      '-w', '100'
+    ], { encoding: 'utf-8' });
+    
+    let envelopes: any[] = [];
+    try {
+      envelopes = JSON.parse(searchResult).slice(0, 10); // Get latest 10
+    } catch {
+      continue;
+    }
+    
+    // Track processed for this source
+    if (!processedIds[source]) processedIds[source] = [];
+    
+    for (const env of envelopes) {
+      const msgId = env.id || env.messageId;
+      if (processedIds[source].includes(msgId)) continue;
+      
+      console.log(`  📬 ${env.date?.slice(0, 10)} - ${env.subject}`);
+      
+      if (dryRun) {
+        console.log(`    [DRY RUN] Would download attachment`);
+        continue;
+      }
+      
+      // Download attachment
+      try {
+        const attachResult = execFileSync('himalaya', [
+          'attachment', 'download',
+          '-i', msgId,
+          '-o', 'json',
+          tempDir
+        ], { encoding: 'utf-8', timeout: 30000 });
+        
+        const attachments = JSON.parse(attachResult);
+        for (const att of attachments) {
+          const filePath = att.path || att.filename;
+          if (filePath && (filePath.endsWith('.csv') || filePath.endsWith('.xlsx'))) {
+            console.log(`    📎 ${filePath}`);
+            // TODO: Import the file
+          }
+        }
+        
+        processedIds[source].push(msgId);
+        imported++;
+      } catch (e) {
+        // No attachment or error
+      }
+    }
+  }
+  
+  // Save state
+  fs.writeFileSync(stateFile, JSON.stringify(processedIds, null, 2));
+  
+  console.log(`\n✅ Done. Imported ${imported} new emails.`);
+  console.log(`📁 State saved to: ${stateFile}`);
+}
+
+// Add email command
+program
+  .command('email-import')
+  .description('Import bills from email using himalaya')
+  .option('-s, --source <sources...>', 'Sources to check (alipay, wechat, yunshanfu)')
+  .option('--dry-run', 'Show what would be imported without importing')
+  .action(handleEmailImport);

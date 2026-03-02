@@ -39,6 +39,8 @@ function ensureSchema(): void {
       bank_name TEXT,
       category TEXT DEFAULT '其他',
       notes TEXT,
+      tags TEXT,
+      currency TEXT DEFAULT 'CNY',
       is_refund INTEGER DEFAULT 0,
       refund_of TEXT,
       is_duplicate INTEGER DEFAULT 0,
@@ -97,6 +99,7 @@ function ensureSchema(): void {
   ensureColumn('duplicate_type', 'TEXT');
   ensureColumn('merged_with', 'TEXT');
   ensureColumn('tags', 'TEXT');
+  ensureColumn('currency', 'TEXT DEFAULT "CNY"');
 
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
@@ -152,8 +155,8 @@ export function insertTransactions(transactions: Transaction[]): number {
   const database = getDatabase();
   const stmt = database.prepare(
     `INSERT INTO transactions
-      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, bank_name, category, notes, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type, merged_with, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, bank_name, category, notes, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type, merged_with, tags, currency, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   let inserted = 0;
@@ -179,6 +182,8 @@ export function insertTransactions(transactions: Transaction[]): number {
         txn.duplicate_source ?? null,
         txn.duplicate_type ?? null,
         txn.merged_with ?? null,
+        txn.tags ?? null,
+        txn.currency ?? 'CNY',
         txn.created_at,
         txn.updated_at,
       ]);
@@ -363,6 +368,24 @@ export function removeTransactionTag(id: string, tag: string): boolean {
   database.run(
     'UPDATE transactions SET tags = ?, updated_at = ? WHERE id = ?',
     [JSON.stringify(currentTags), now, id]
+  );
+  saveDatabase();
+  return true;
+}
+
+export function updateTransactionCurrency(id: string, currency: string): boolean {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  
+  // Validate currency
+  const validCurrencies = ['CNY', 'USD', 'EUR', 'JPY', 'HKD'];
+  if (!validCurrencies.includes(currency)) {
+    return false;
+  }
+  
+  database.run(
+    'UPDATE transactions SET currency = ?, updated_at = ? WHERE id = ?',
+    [currency, now, id]
   );
   saveDatabase();
   return true;

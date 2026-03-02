@@ -6,6 +6,7 @@ export interface Transaction {
   original_id?: string;
   date: string;
   amount: number;
+  currency?: string;
   type: 'expense' | 'income' | 'transfer';
   counterparty?: string;
   description?: string;
