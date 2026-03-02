@@ -34,10 +34,10 @@ test('getYearDateRange returns full year bounds', () => {
   assert.deepEqual(getYearDateRange(2026), { from: '2026-01-01', to: '2026-12-31' });
 });
 
-test('buildTransactionWhereClause adds exact merchant condition', () => {
+test('buildTransactionWhereClause adds partial merchant condition', () => {
   const out = buildTransactionWhereClause({ merchant: '麦当劳' });
-  assert.equal(out.where.includes('counterparty = ?'), true);
-  assert.equal(out.params[0], '麦当劳');
+  assert.equal(out.where.includes('counterparty LIKE ?'), true);
+  assert.equal(out.params[0], '%麦当劳%');
 });
 
 test('removeDrilldownField removes one field and keeps others', () => {

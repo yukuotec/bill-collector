@@ -362,6 +362,14 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           onChange={(e) => updateFilter({ q: e.target.value })}
         />
 
+        <input
+          className="search-input"
+          data-testid="merchant-search"
+          value={filter.merchant}
+          placeholder="搜索商家"
+          onChange={(e) => updateFilter({ merchant: e.target.value })}
+        />
+
         <label className="filter-inline">
           开始日期
           <input type="date" value={filter.startDate} onChange={(e) => updateFilter({ startDate: e.target.value })} />

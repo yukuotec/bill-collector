@@ -9,8 +9,8 @@ export function buildTransactionWhereClause(filters?: TransactionQuery): { where
     params.push(filters.category);
   }
   if (filters?.merchant) {
-    where.push('counterparty = ?');
-    params.push(filters.merchant);
+    where.push('counterparty LIKE ?');
+    params.push(`%${filters.merchant}%`);
   }
   if (filters?.source) {
     where.push('source = ?');
