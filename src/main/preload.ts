@@ -19,4 +19,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setBudget: (id: string, yearMonth: string, amount: number, category: string | null) => ipcRenderer.invoke('set-budget', id, yearMonth, amount, category),
   deleteBudget: (id: string) => ipcRenderer.invoke('delete-budget', id),
   getBudgetAlerts: (yearMonth?: string): Promise<BudgetAlert[]> => ipcRenderer.invoke('get-budget-alerts', yearMonth),
+  getTags: (id: string): Promise<string[]> => ipcRenderer.invoke('get-tags', id),
+  addTag: (id: string, tag: string): Promise<boolean> => ipcRenderer.invoke('add-tag', id, tag),
+  removeTag: (id: string, tag: string): Promise<boolean> => ipcRenderer.invoke('remove-tag', id, tag),
 });

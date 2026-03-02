@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -1038,5 +1038,17 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     }
     
     return alerts;
+  });
+
+  ipcMain.handle('get-tags', async (_, id: string): Promise<string[]> => {
+    return getTransactionTags(id);
+  });
+
+  ipcMain.handle('add-tag', async (_, id: string, tag: string): Promise<boolean> => {
+    return addTransactionTag(id, tag);
+  });
+
+  ipcMain.handle('remove-tag', async (_, id: string, tag: string): Promise<boolean> => {
+    return removeTransactionTag(id, tag);
   });
 }

@@ -96,6 +96,7 @@ function ensureSchema(): void {
   ensureColumn('duplicate_source', 'TEXT');
   ensureColumn('duplicate_type', 'TEXT');
   ensureColumn('merged_with', 'TEXT');
+  ensureColumn('tags', 'TEXT');
 
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
@@ -262,6 +263,109 @@ export function getBudgetSpending(yearMonth: string, category: string | null): n
   }
   stmt.free();
   return total;
+}
+
+export function getTransactionTags(id: string): string[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT tags FROM transactions WHERE id = ?');
+  stmt.bind([id]);
+  let tags: string[] = [];
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { tags?: string | null };
+    const tagsStr = row.tags;
+    if (tagsStr) {
+      try {
+        tags = JSON.parse(tagsStr);
+        if (!Array.isArray(tags)) {
+          tags = [];
+        }
+      } catch {
+        tags = [];
+      }
+    }
+  }
+  stmt.free();
+  return tags;
+}
+
+export function addTransactionTag(id: string, tag: string): boolean {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  
+  // Get current tags
+  const stmt = database.prepare('SELECT tags FROM transactions WHERE id = ?');
+  stmt.bind([id]);
+  let currentTags: string[] = [];
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { tags?: string | null };
+    const tagsStr = row.tags;
+    if (tagsStr) {
+      try {
+        currentTags = JSON.parse(tagsStr);
+        if (!Array.isArray(currentTags)) {
+          currentTags = [];
+        }
+      } catch {
+        currentTags = [];
+      }
+    }
+  }
+  stmt.free();
+  
+  // Add the new tag if it doesn't exist
+  const trimmedTag = tag.trim();
+  if (!trimmedTag) {
+    return false;
+  }
+  
+  if (!currentTags.includes(trimmedTag)) {
+    currentTags.push(trimmedTag);
+  }
+  
+  // Save back to database
+  database.run(
+    'UPDATE transactions SET tags = ?, updated_at = ? WHERE id = ?',
+    [JSON.stringify(currentTags), now, id]
+  );
+  saveDatabase();
+  return true;
+}
+
+export function removeTransactionTag(id: string, tag: string): boolean {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  
+  // Get current tags
+  const stmt = database.prepare('SELECT tags FROM transactions WHERE id = ?');
+  stmt.bind([id]);
+  let currentTags: string[] = [];
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { tags?: string | null };
+    const tagsStr = row.tags;
+    if (tagsStr) {
+      try {
+        currentTags = JSON.parse(tagsStr);
+        if (!Array.isArray(currentTags)) {
+          currentTags = [];
+        }
+      } catch {
+        currentTags = [];
+      }
+    }
+  }
+  stmt.free();
+  
+  // Remove the tag
+  const trimmedTag = tag.trim();
+  currentTags = currentTags.filter((t) => t !== trimmedTag);
+  
+  // Save back to database
+  database.run(
+    'UPDATE transactions SET tags = ?, updated_at = ? WHERE id = ?',
+    [JSON.stringify(currentTags), now, id]
+  );
+  saveDatabase();
+  return true;
 }
 
 export function closeDatabase(): void {

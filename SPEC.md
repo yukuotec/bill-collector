@@ -188,7 +188,7 @@ expense-tracker/
 
 ### Future (Post-MVP)
 - [ ] Auto-collection (web scraping / notification capture)
-- [ ] Budget alerts
+- [x] Budget alerts
 - [ ] Multi-currency support
 
 ---

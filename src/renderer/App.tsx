@@ -44,6 +44,9 @@ declare global {
       setBudget: (id: string, yearMonth: string, amount: number, category: string | null) => Promise<boolean>;
       deleteBudget: (id: string) => Promise<boolean>;
       getBudgetAlerts: (yearMonth?: string) => Promise<BudgetAlert[]>;
+      getTags: (id: string) => Promise<string[]>;
+      addTag: (id: string, tag: string) => Promise<boolean>;
+      removeTag: (id: string, tag: string) => Promise<boolean>;
     };
   }
 }
