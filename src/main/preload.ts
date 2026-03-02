@@ -3,6 +3,12 @@ import { Budget, BudgetAlert, DuplicateReviewItem, Summary, SummaryQuery, Transa
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
+interface CategorySummary {
+  category: string;
+  total: number;
+  percentage: number;
+}
+
 interface ImportOptions {
   dryRun?: boolean;
   previewLimit?: number;
@@ -33,6 +39,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
     ipcRenderer.invoke('import-csv', filePath, source, options),
   getTransactions: (filters?: TransactionQuery): Promise<TransactionListResponse> => ipcRenderer.invoke('get-transactions', filters),
   getSummary: (query?: SummaryQuery): Promise<Summary> => ipcRenderer.invoke('get-summary', query),
+  getCategorySummary: (year?: number): Promise<CategorySummary[]> => ipcRenderer.invoke('get-category-summary', year),
   getDuplicateTransactions: (): Promise<DuplicateReviewItem[]> => ipcRenderer.invoke('get-duplicate-transactions'),
   resolveDuplicate: (id: string, action: 'keep' | 'merge') => ipcRenderer.invoke('resolve-duplicate', id, action),
   updateCategory: (id: string, category: string) => ipcRenderer.invoke('update-category', id, category),

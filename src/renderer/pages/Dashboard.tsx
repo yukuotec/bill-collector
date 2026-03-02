@@ -3,6 +3,12 @@ import { BudgetAlert, Summary } from '../../shared/types';
 import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
 
+interface CategorySummary {
+  category: string;
+  total: number;
+  percentage: number;
+}
+
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -29,6 +35,7 @@ interface DashboardProps {
 export default function Dashboard({ onDrilldown }: DashboardProps) {
   const currentYear = new Date().getFullYear();
   const [summary, setSummary] = useState<Summary | null>(null);
+  const [categorySummary, setCategorySummary] = useState<CategorySummary[]>([]);
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [loading, setLoading] = useState<boolean>(true);
@@ -78,6 +85,19 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
 
     void loadBudgetAlerts();
   }, []);
+
+  useEffect(() => {
+    const loadCategorySummary = async () => {
+      try {
+        const data = await window.electronAPI.getCategorySummary(selectedYear);
+        setCategorySummary(data);
+      } catch (error) {
+        console.error('Failed to load category summary:', error);
+      }
+    };
+
+    void loadCategorySummary();
+  }, [selectedYear]);
 
   const formatCurrency = (value: number) => `¥${value.toFixed(2)}`;
 
@@ -243,6 +263,61 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
             </PieChart>
           </ResponsiveContainer>
         )}
+      </div>
+
+      <div className="card">
+        <div className="card-header">
+          <h3 className="card-title">📊 分类统计</h3>
+          <span className="card-subtitle">Top 5 支出分类及占比</span>
+        </div>
+        <table className="table">
+          <thead>
+            <tr>
+              <th>排名</th>
+              <th>分类</th>
+              <th>支出总额</th>
+              <th>占比</th>
+            </tr>
+          </thead>
+          <tbody>
+            {categorySummary.map((item, index) => (
+              <tr
+                key={item.category}
+                onClick={() =>
+                  onDrilldown({
+                    ...range,
+                    category: item.category,
+                    drill: true,
+                  })
+                }
+                className="drillable-row"
+              >
+                <td><span className="rank-badge">{index + 1}</span></td>
+                <td className="category-cell">
+                  <span className="category-icon">{CATEGORY_ICONS[item.category] || '📦'}</span>
+                  {item.category}
+                </td>
+                <td className="amount expense">{formatCurrency(item.total)}</td>
+                <td>
+                  <div className="percentage-cell">
+                    <span className="percentage-text">{item.percentage.toFixed(1)}%</span>
+                    <div className="percentage-bar">
+                      <div 
+                        className="percentage-fill" 
+                        style={{ width: `${Math.min(item.percentage, 100)}%` }}
+                      />
+                    </div>
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {categorySummary.length === 0 && (
+              <tr>
+                <td colSpan={4} className="empty-cell">暂无分类数据</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
       </div>
 
       <div className="card">

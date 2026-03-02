@@ -908,6 +908,43 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     return true;
   });
 
+  ipcMain.handle('get-category-summary', async (_, year?: number): Promise<{ category: string; total: number; percentage: number }[]> => {
+    const now = new Date();
+    const targetYear = Number.isInteger(year) ? year : now.getFullYear();
+
+    const rows = queryAll(
+      `
+      SELECT COALESCE(NULLIF(TRIM(category), ''), '其他') as category, SUM(amount) as total
+      FROM transactions
+      WHERE type = 'expense'
+        AND strftime('%Y', date) = ?
+      GROUP BY category
+      ORDER BY total DESC
+      LIMIT 5
+    `,
+      [String(targetYear)]
+    );
+
+    // Calculate total for percentage calculation
+    const allRows = queryAll(
+      `
+      SELECT SUM(amount) as grandTotal
+      FROM transactions
+      WHERE type = 'expense'
+        AND strftime('%Y', date) = ?
+    `,
+      [String(targetYear)]
+    );
+
+    const grandTotal = Number(allRows[0]?.grandTotal ?? 0);
+
+    return rows.map((row) => ({
+      category: String(row.category ?? '其他'),
+      total: Number(row.total ?? 0),
+      percentage: grandTotal > 0 ? (Number(row.total ?? 0) / grandTotal) * 100 : 0,
+    }));
+  });
+
   ipcMain.handle('get-summary', async (_, query?: SummaryQuery): Promise<Summary> => {
     const now = new Date();
     const currentYear = now.getFullYear();
