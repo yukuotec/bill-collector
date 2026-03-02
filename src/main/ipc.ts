@@ -35,6 +35,8 @@ interface ImportCsvResult {
   crossPlatformCount: number;
   errors: string[];
   preview: Array<Pick<Transaction, 'date' | 'type' | 'amount' | 'counterparty' | 'description' | 'category'>>;
+  columns?: string[];
+  columnMapping?: Record<string, string>;
 }
 
 interface DuplicateCandidate {
@@ -272,6 +274,72 @@ function buildPreview(
     description: txn.description,
     category: txn.category,
   }));
+}
+
+function extractCsvColumns(content: string): string[] {
+  const firstLine = content.split('\n')[0];
+  const headers = Papa.parse(firstLine, { header: false }).data;
+  if (headers.length > 0 && Array.isArray(headers[0])) {
+    return headers[0].map((h: string) => h?.trim() || '').filter(Boolean);
+  }
+  return [];
+}
+
+function buildColumnMapping(headers: string[]): Record<string, string> {
+  const mapping: Record<string, string> = {};
+  const normalizedHeaders = headers.map(h => h.toLowerCase().trim());
+  
+  // Date column mapping
+  const datePatterns = ['date', '交易时间', '日期', 'time', '交易日期', '记账日期'];
+  for (const pattern of datePatterns) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(pattern.toLowerCase()));
+    if (idx >= 0) {
+      mapping[headers[idx]] = 'date';
+      break;
+    }
+  }
+  
+  // Amount column mapping
+  const amountPatterns = ['amount', '金额', '交易金额', '金额(元)', '金额'];
+  for (const pattern of amountPatterns) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(pattern.toLowerCase()));
+    if (idx >= 0) {
+      mapping[headers[idx]] = 'amount';
+      break;
+    }
+  }
+  
+  // Type column mapping
+  const typePatterns = ['type', '类型', '收/支', '交易类型', '支出/收入'];
+  for (const pattern of typePatterns) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(pattern.toLowerCase()));
+    if (idx >= 0) {
+      mapping[headers[idx]] = 'type';
+      break;
+    }
+  }
+  
+  // Counterparty mapping
+  const counterpartyPatterns = ['counterparty', '交易对方', '对方', '商户', '收款方', '付款方'];
+  for (const pattern of counterpartyPatterns) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(pattern.toLowerCase()));
+    if (idx >= 0) {
+      mapping[headers[idx]] = 'counterparty';
+      break;
+    }
+  }
+  
+  // Description mapping
+  const descPatterns = ['description', '说明', '摘要', '商品说明', '备注'];
+  for (const pattern of descPatterns) {
+    const idx = normalizedHeaders.findIndex(h => h.includes(pattern.toLowerCase()));
+    if (idx >= 0) {
+      mapping[headers[idx]] = 'description';
+      break;
+    }
+  }
+  
+  return mapping;
 }
 
 function normalizeText(value?: string): string {
@@ -664,9 +732,30 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       crossPlatformCount: 0,
       errors: [],
       preview: [],
+      columns: [],
+      columnMapping: {},
     };
 
     try {
+      const ext = path.extname(filePath).toLowerCase();
+      let csvContent = '';
+      
+      // Extract CSV content based on file type
+      if (ext === '.csv') {
+        const buffer = fs.readFileSync(filePath);
+        const candidates = decodeCsvCandidates(buffer);
+        csvContent = candidates[0];
+      } else if (ext === '.xlsx') {
+        csvContent = convertXlsxToCsv(filePath);
+      }
+      
+      // Extract column information from CSV
+      if (csvContent) {
+        const columns = extractCsvColumns(csvContent);
+        result.columns = columns;
+        result.columnMapping = buildColumnMapping(columns);
+      }
+      
       const transactions = await parseTransactionsFromFile(filePath, source);
       const previewLimit = Math.max(1, options?.previewLimit ?? 5);
       result.parsedCount = transactions.length;
@@ -947,6 +1036,17 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     db.run('DELETE FROM transactions WHERE id = ?', [id]);
     saveDatabase();
     return true;
+  });
+
+  ipcMain.handle('delete-transactions-by-ids', async (_, ids: string[]) => {
+    if (!ids || ids.length === 0) {
+      return { deleted: 0 };
+    }
+    const db = getDatabase();
+    const placeholders = ids.map(() => '?').join(',');
+    db.run(`DELETE FROM transactions WHERE id IN (${placeholders})`, ids);
+    saveDatabase();
+    return { deleted: ids.length };
   });
 
   ipcMain.handle('export-csv', async (_, ids?: string[]) => {
