@@ -12,6 +12,7 @@ export interface Transaction {
   bank_name?: string;
   category?: string;
   notes?: string;
+  tags?: string;
   is_refund?: boolean | number;
   refund_of?: string | null;
   is_duplicate?: boolean | number;

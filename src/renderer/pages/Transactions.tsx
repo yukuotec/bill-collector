@@ -131,7 +131,10 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const requestIdRef = useRef(0);
   const [editableNotes, setEditableNotes] = useState<string | null>(null);
   const [tempNotes, setTempNotes] = useState('');
+  const [editableTags, setEditableTags] = useState<string | null>(null);
+  const [tempTags, setTempTags] = useState('');
   const inputRef = useRef<HTMLInputElement>(null);
+  const tagsInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const defaultThisMonth = getThisMonthRange();
   const [filter, setFilter] = useState<FilterState>({
@@ -250,6 +253,72 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
       saveNotes(id);
     } else if (e.key === 'Escape') {
       cancelEditNotes();
+    }
+  };
+
+  const startEditTags = (id: string, currentTags: string | null | undefined) => {
+    setEditableTags(id);
+    let parsedTags: string[] = [];
+    if (currentTags) {
+      try {
+        parsedTags = JSON.parse(currentTags);
+        if (!Array.isArray(parsedTags)) {
+          parsedTags = [];
+        }
+      } catch {
+        parsedTags = [];
+      }
+    }
+    setTempTags(parsedTags.join(', '));
+    setTimeout(() => tagsInputRef.current?.focus(), 0);
+  };
+
+  const cancelEditTags = () => {
+    setEditableTags(null);
+    setTempTags('');
+  };
+
+  const saveTags = async (id: string) => {
+    // Get current tags from database
+    const currentTags = await window.electronAPI.getTags(id);
+    
+    // Parse new tags from input (comma-separated)
+    const newTags = tempTags
+      .split(',')
+      .map(t => t.trim())
+      .filter(Boolean);
+    
+    // Find tags to add (in newTags but not in currentTags)
+    const tagsToAdd = newTags.filter(t => !currentTags.includes(t));
+    
+    // Find tags to remove (in currentTags but not in newTags)
+    const tagsToRemove = currentTags.filter(t => !newTags.includes(t));
+    
+    // Add new tags
+    for (const tag of tagsToAdd) {
+      await window.electronAPI.addTag(id, tag);
+    }
+    
+    // Remove old tags
+    for (const tag of tagsToRemove) {
+      await window.electronAPI.removeTag(id, tag);
+    }
+    
+    setEditableTags(null);
+    setTempTags('');
+    await loadTransactions();
+  };
+
+  const handleRemoveTag = async (id: string, tag: string) => {
+    await window.electronAPI.removeTag(id, tag);
+    await loadTransactions();
+  };
+
+  const handleTagsKeyDown = (e: React.KeyboardEvent, id: string) => {
+    if (e.key === 'Enter') {
+      saveTags(id);
+    } else if (e.key === 'Escape') {
+      cancelEditTags();
     }
   };
 
@@ -521,6 +590,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
               <th>商家</th>
               <th>描述</th>
               <th>备注</th>
+              <th>标签</th>
               <th>分类</th>
               <th>来源</th>
               <th>退款关联</th>
@@ -531,10 +601,20 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           <tbody>
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={12}>暂无数据</td>
+                <td colSpan={13}>暂无数据</td>
               </tr>
             )}
-            {transactions.map((txn) => (
+            {transactions.map((txn) => {
+              const tags: string[] = txn.tags ? (() => {
+                try {
+                  const parsed = JSON.parse(txn.tags);
+                  return Array.isArray(parsed) ? parsed : [];
+                } catch {
+                  return [];
+                }
+              })() : [];
+              
+              return (
               <tr key={txn.id}>
                 <td>
                   <input
@@ -565,6 +645,38 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
                     <span className="editable-notes">{txn.notes || '-'}</span>
                   )}
                 </td>
+                <td onClick={(e) => { e.stopPropagation(); startEditTags(txn.id, txn.tags); }}>
+                  {editableTags === txn.id ? (
+                    <input
+                      ref={tagsInputRef}
+                      className="tags-input"
+                      value={tempTags}
+                      onChange={(e) => setTempTags(e.target.value)}
+                      onBlur={() => saveTags(txn.id)}
+                      onKeyDown={(e) => handleTagsKeyDown(e, txn.id)}
+                      onClick={(e) => e.stopPropagation()}
+                      placeholder="标签(逗号分隔)"
+                    />
+                  ) : (
+                    <div className="tags-container">
+                      {tags.length > 0 ? (
+                        tags.map((tag) => (
+                          <span key={tag} className="tag-chip">
+                            {tag}
+                            <button
+                              className="tag-remove"
+                              onClick={(e) => { e.stopPropagation(); handleRemoveTag(txn.id, tag); }}
+                            >
+                              ×
+                            </button>
+                          </span>
+                        ))
+                      ) : (
+                        <span className="no-tags">-</span>
+                      )}
+                    </div>
+                  )}
+                </td>
                 <td>
                   <select value={txn.category || '其他'} onChange={(e) => handleCategoryChange(txn.id, e.target.value)}>
                     {Object.keys(CATEGORIES).map((cat) => (
@@ -583,7 +695,8 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
                   </button>
                 </td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>
