@@ -396,6 +396,17 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
     await window.electronAPI.exportCSV(ids);
   };
 
+  const handleDeleteSelected = async () => {
+    if (selectedIds.size === 0) return;
+    const count = selectedIds.size;
+    if (confirm(`确定要删除选中的 ${count} 条记录吗？此操作不可撤销。`)) {
+      const ids = Array.from(selectedIds);
+      await window.electronAPI.deleteTransactionsByIds(ids);
+      setSelectedIds(new Set());
+      await Promise.all([loadTransactions(), loadDuplicates()]);
+    }
+  };
+
   const isAllSelected = transactions.length > 0 && transactions.every((txn) => selectedIds.has(txn.id));
   const isPartialSelected = transactions.some((txn) => selectedIds.has(txn.id)) && !isAllSelected;
 
@@ -557,9 +568,14 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         </div>
         <div className="toolbar-actions">
           {selectedIds.size > 0 && (
-            <button className="btn-primary" onClick={handleExportSelected}>
-              导出选中
-            </button>
+            <>
+              <button className="btn-primary" onClick={handleExportSelected}>
+                导出选中
+              </button>
+              <button className="btn-danger" onClick={handleDeleteSelected}>
+                删除选中 ({selectedIds.size})
+              </button>
+            </>
           )}
           <button className="btn-secondary" onClick={() => toggleSort('date')}>
             日期排序 {sortBy === 'date' ? (sortOrder === 'asc' ? '↑' : '↓') : ''}
