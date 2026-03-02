@@ -1312,3 +1312,67 @@ select {
 .remaining-negative {
   color: var(--danger);
 }
+
+/* Monthly Trend Table Styles */
+.monthly-trend-table {
+  margin-top: 20px;
+}
+
+.monthly-trend-table .table {
+  font-size: 13px;
+}
+
+.monthly-trend-table .table th {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.monthly-trend-table .table td {
+  vertical-align: middle;
+}
+
+.month-label {
+  font-weight: 500;
+}
+
+.current-month {
+  background-color: var(--primary-light);
+}
+
+.current-badge {
+  display: inline-block;
+  background: var(--primary);
+  color: white;
+  font-size: 10px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  margin-left: 8px;
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.change-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.change-indicator.positive {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.change-indicator.negative {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.change-indicator.neutral {
+  background: var(--border-light);
+  color: var(--text-muted);
+}

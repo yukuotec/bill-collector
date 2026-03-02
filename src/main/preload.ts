@@ -56,4 +56,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTags: (id: string): Promise<string[]> => ipcRenderer.invoke('get-tags', id),
   addTag: (id: string, tag: string): Promise<boolean> => ipcRenderer.invoke('add-tag', id, tag),
   removeTag: (id: string, tag: string): Promise<boolean> => ipcRenderer.invoke('remove-tag', id, tag),
+  getMonthlyTrend: (months?: number): Promise<{
+    data: Array<{
+      month: string;
+      expense: number;
+      income: number;
+      expenseChange: number | null;
+      incomeChange: number | null;
+    }>;
+    currentMonth: string;
+    previousMonth: string;
+  }> => ipcRenderer.invoke('get-monthly-trend', months),
 });
