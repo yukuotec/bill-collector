@@ -1188,4 +1188,73 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('remove-tag', async (_, id: string, tag: string): Promise<boolean> => {
     return removeTransactionTag(id, tag);
   });
+
+  ipcMain.handle('get-monthly-trend', async (_, months: number = 12): Promise<{
+    data: Array<{
+      month: string;
+      expense: number;
+      income: number;
+      expenseChange: number | null;
+      incomeChange: number | null;
+    }>;
+    currentMonth: string;
+    previousMonth: string;
+  }> => {
+    const now = new Date();
+    const targetYear = now.getFullYear();
+    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    
+    // Get data for the last N months
+    const monthlyRows = queryAll(
+      `
+      SELECT
+        strftime('%Y-%m', date) as month,
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
+      FROM transactions
+      WHERE type IN ('expense', 'income')
+        AND date >= date('now', '-${months} months')
+      GROUP BY month
+      ORDER BY month ASC
+      `
+    );
+
+    const data = monthlyRows.map((row, index) => {
+      const expense = Number(row.expense ?? 0);
+      const income = Number(row.income ?? 0);
+      let expenseChange: number | null = null;
+      let incomeChange: number | null = null;
+
+      if (index > 0) {
+        const prevRow = monthlyRows[index - 1];
+        const prevExpense = Number(prevRow.expense ?? 0);
+        const prevIncome = Number(prevRow.income ?? 0);
+        
+        if (prevExpense > 0) {
+          expenseChange = ((expense - prevExpense) / prevExpense) * 100;
+        }
+        if (prevIncome > 0) {
+          incomeChange = ((income - prevIncome) / prevIncome) * 100;
+        }
+      }
+
+      return {
+        month: String(row.month ?? ''),
+        expense,
+        income,
+        expenseChange,
+        incomeChange,
+      };
+    });
+
+    // Calculate previous month for comparison
+    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
+
+    return {
+      data,
+      currentMonth,
+      previousMonth,
+    };
+  });
 }

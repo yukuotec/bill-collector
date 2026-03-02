@@ -1,12 +1,20 @@
 import { useEffect, useMemo, useState } from 'react';
 import { BudgetAlert, Summary } from '../../shared/types';
 import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
-import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend } from 'recharts';
+import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts';
 
 interface CategorySummary {
   category: string;
   total: number;
   percentage: number;
+}
+
+interface MonthlyTrendData {
+  month: string;
+  expense: number;
+  income: number;
+  expenseChange: number | null;
+  incomeChange: number | null;
 }
 
 const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884d8', '#82ca9d', '#ffc658', '#ff7300'];
@@ -39,6 +47,9 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
   const [budgetAlerts, setBudgetAlerts] = useState<BudgetAlert[]>([]);
   const [selectedYear, setSelectedYear] = useState<number>(currentYear);
   const [loading, setLoading] = useState<boolean>(true);
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendData[]>([]);
+  const [currentMonth, setCurrentMonth] = useState<string>('');
+  const [previousMonth, setPreviousMonth] = useState<string>('');
 
   useEffect(() => {
     let cancelled = false;
@@ -98,6 +109,21 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
 
     void loadCategorySummary();
   }, [selectedYear]);
+
+  useEffect(() => {
+    const loadMonthlyTrend = async () => {
+      try {
+        const data = await window.electronAPI.getMonthlyTrend(12);
+        setMonthlyTrend(data.data);
+        setCurrentMonth(data.currentMonth);
+        setPreviousMonth(data.previousMonth);
+      } catch (error) {
+        console.error('Failed to load monthly trend:', error);
+      }
+    };
+
+    void loadMonthlyTrend();
+  }, []);
 
   const formatCurrency = (value: number) => `¥${value.toFixed(2)}`;
 
@@ -225,6 +251,72 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
             <Line type="monotone" dataKey="income" stroke="#4caf50" name="收入" strokeWidth={2} dot={{ r: 4 }} activeDot={{ r: 6 }} />
           </LineChart>
         </ResponsiveContainer>
+      </div>
+
+      <div className="chart-container">
+        <div className="chart-header">
+          <h3 className="chart-title">📊 月度支出明细（近12个月）</h3>
+          <span className="chart-subtitle">与上月对比</span>
+        </div>
+        {monthlyTrend.length === 0 ? (
+          <div className="empty-state">暂无月度数据</div>
+        ) : (
+          <>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={monthlyTrend} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="month" tickFormatter={(value) => value.slice(5)} />
+                <YAxis />
+                <Tooltip formatter={(value: number) => formatCurrency(value)} />
+                <Legend />
+                <Bar dataKey="expense" fill="#f44336" name="支出" />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="monthly-trend-table">
+              <table className="table">
+                <thead>
+                  <tr>
+                    <th>月份</th>
+                    <th>支出</th>
+                    <th>环比变化</th>
+                    <th>收入</th>
+                    <th>环比变化</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[...monthlyTrend].reverse().map((item) => (
+                    <tr key={item.month} className={item.month === currentMonth ? 'current-month' : ''}>
+                      <td>
+                        <span className="month-label">{item.month}</span>
+                        {item.month === currentMonth && <span className="current-badge">本月</span>}
+                      </td>
+                      <td className="amount expense">{formatCurrency(item.expense)}</td>
+                      <td>
+                        {item.expenseChange !== null ? (
+                          <span className={`change-indicator ${item.expenseChange >= 0 ? 'negative' : 'positive'}`}>
+                            {item.expenseChange >= 0 ? '↑' : '↓'} {Math.abs(item.expenseChange).toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span className="change-indicator neutral">-</span>
+                        )}
+                      </td>
+                      <td className="amount income">{formatCurrency(item.income)}</td>
+                      <td>
+                        {item.incomeChange !== null ? (
+                          <span className={`change-indicator ${item.incomeChange >= 0 ? 'positive' : 'negative'}`}>
+                            {item.incomeChange >= 0 ? '↑' : '↓'} {Math.abs(item.incomeChange).toFixed(1)}%
+                          </span>
+                        ) : (
+                          <span className="change-indicator neutral">-</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="chart-container">
