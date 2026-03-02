@@ -1,9 +1,35 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { Budget, BudgetAlert, DuplicateReviewItem, Summary, SummaryQuery, TransactionListResponse, TransactionQuery } from '../shared/types';
 
+type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
+
+interface ImportOptions {
+  dryRun?: boolean;
+  previewLimit?: number;
+}
+
+interface ImportResult {
+  importId: string | null;
+  parsedCount: number;
+  inserted: number;
+  exactMerged: number;
+  fuzzyFlagged: number;
+  errors: string[];
+  preview: Array<{
+    date: string;
+    type: string;
+    amount: number;
+    counterparty?: string;
+    description?: string;
+    category?: string;
+  }>;
+  columns?: string[];
+  columnMapping?: Record<string, string>;
+}
+
 contextBridge.exposeInMainWorld('electronAPI', {
   selectFile: (filters: { name: string; extensions: string[] }[]) => ipcRenderer.invoke('select-file', filters),
-  importCSV: (filePath: string, source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank', options?: { dryRun?: boolean; previewLimit?: number }) =>
+  importCSV: (filePath: string, source: ImportSource, options?: ImportOptions): Promise<ImportResult> =>
     ipcRenderer.invoke('import-csv', filePath, source, options),
   getTransactions: (filters?: TransactionQuery): Promise<TransactionListResponse> => ipcRenderer.invoke('get-transactions', filters),
   getSummary: (query?: SummaryQuery): Promise<Summary> => ipcRenderer.invoke('get-summary', query),
@@ -12,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   updateCategory: (id: string, category: string) => ipcRenderer.invoke('update-category', id, category),
   updateNotes: (id: string, notes: string) => ipcRenderer.invoke('update-notes', id, notes),
   deleteTransaction: (id: string) => ipcRenderer.invoke('delete-transaction', id),
+  deleteTransactionsByIds: (ids: string[]) => ipcRenderer.invoke('delete-transactions-by-ids', ids),
   exportCSV: (ids?: string[]) => ipcRenderer.invoke('export-csv', ids),
   exportExcel: () => ipcRenderer.invoke('export-excel'),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),

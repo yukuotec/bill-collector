@@ -17,6 +17,8 @@ type ImportResult = {
     description?: string;
     category?: string;
   }>;
+  columns?: string[];
+  columnMapping?: Record<string, string>;
 };
 
 const SOURCE_LABELS: Record<Source, string> = {
@@ -266,6 +268,17 @@ export default function Import() {
 
         <div className="import-buttons">
           <button 
+            onClick={() => loadPreview(filePath, source)} 
+            disabled={!filePath || previewLoading} 
+            className="btn-secondary btn-lg"
+          >
+            {previewLoading ? (
+              <>⏳ 预览中...</>
+            ) : (
+              <>👁️ 预览</>
+            )}
+          </button>
+          <button 
             onClick={handleImport} 
             disabled={!canImport} 
             className="btn-primary btn-lg"
@@ -287,6 +300,25 @@ export default function Import() {
           <div className="preview-card">
             <h3>📊 解析结果预览</h3>
             <p className="preview-summary">总条数：{previewResult.parsedCount}</p>
+            
+            {/* Column Mapping Display */}
+            {previewResult.columns && previewResult.columns.length > 0 && (
+              <div className="column-mapping">
+                <h4>列映射</h4>
+                <div className="column-mapping-grid">
+                  {previewResult.columns.map((col, index) => (
+                    <div key={index} className="column-mapping-item">
+                      <span className="column-name">{col}</span>
+                      <span className="column-arrow">→</span>
+                      <span className="column-target">
+                        {previewResult.columnMapping?.[col] || '未映射'}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+            
             {previewResult.preview.length > 0 ? (
               <table className="table preview-table">
                 <thead>
