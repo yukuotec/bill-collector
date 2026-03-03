@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -13,7 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 
 type Source = TransactionSource;
@@ -38,6 +38,7 @@ interface ImportCsvResult {
   preview: Array<Pick<Transaction, 'date' | 'type' | 'amount' | 'counterparty' | 'description' | 'category'>>;
   columns?: string[];
   columnMapping?: Record<string, string>;
+  triageResults?: Array<{ transactionId: string; suggestedMemberId: string | null; matchedKeyword: string | null }>;
 }
 
 interface DuplicateCandidate {
@@ -808,6 +809,10 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
 
       result.inserted = insertTransactions(toInsert);
 
+      // Apply triage rules after insertion
+      const triageResults = applyTriageRules(toInsert);
+      result.triageResults = triageResults;
+
       db.run(`INSERT INTO imports (id, source, file_name, record_count, imported_at) VALUES (?, ?, ?, ?, ?)`, [
         importId,
         source,
@@ -1287,5 +1292,14 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
 
   ipcMain.handle('get-member-summary', async (_, year: number, month?: number): Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]> => {
     return getMemberSpendingSummary(year, month);
+  });
+
+  // Phase 1: Triage Rules handlers
+  ipcMain.handle('apply-triage-rules', async (_, transactions: Transaction[]) => {
+    return applyTriageRules(transactions);
+  });
+
+  ipcMain.handle('auto-apply-triage-rules', async (_, transactions: Transaction[]) => {
+    return autoApplyTriageRules(transactions);
   });
 }
