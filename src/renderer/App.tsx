@@ -6,6 +6,7 @@ import Import from './pages/Import';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Members from './pages/Members';
+import AssignTransactions from './pages/AssignTransactions';
 
 declare global {
   interface Window {
@@ -54,6 +55,25 @@ declare global {
       deleteMember: (id: string) => Promise<void>;
       setTransactionMember: (transactionId: string, memberId: string | null) => Promise<void>;
       getMemberSummary: (year: number, month?: number) => Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]>;
+      checkSimilarAssignments: (
+        transaction: Transaction,
+        memberId: string,
+        threshold?: number
+      ) => Promise<{
+        similarCount: number;
+        memberId: string;
+        memberName: string;
+        shouldPrompt: boolean;
+        similarTransactions: Array<{
+          id: string;
+          counterparty: string | null;
+          description: string | null;
+          category: string | null;
+          date: string;
+          amount: number;
+        }>;
+      }>;
+      batchAssignSimilar: (transaction: Transaction, memberId: string) => Promise<number>;
     };
   }
 }
@@ -62,6 +82,7 @@ const navItems = [
   { page: 'dashboard', label: '仪表盘', icon: '📊' },
   { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
+  { page: 'assign', label: '分配交易', icon: '📤' },
   { page: 'import', label: '导入', icon: '📥' },
   { page: 'transactions', label: '交易记录', icon: '📋' },
 ] as const;
@@ -125,6 +146,7 @@ export default function App() {
             }}
           />
         )}
+        {currentPage === 'assign' && <AssignTransactions />}
       </main>
     </div>
   );
