@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -13,7 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 
 type Source = TransactionSource;
@@ -1310,5 +1310,38 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
 
   ipcMain.handle('batch-assign-similar', async (_, transaction: Transaction, memberId: string) => {
     return batchAssignSimilar(transaction, memberId);
+  });
+
+  // Email account handlers
+  ipcMain.handle('get-email-accounts', async (): Promise<EmailAccount[]> => {
+    return getEmailAccounts();
+  });
+
+  ipcMain.handle('add-email-account', async (
+    _,
+    id: string,
+    email: string,
+    imapHost: string,
+    imapPort: number,
+    smtpHost: string,
+    smtpPort: number,
+    username: string,
+    password: string
+  ): Promise<void> => {
+    addEmailAccount(id, email, imapHost, imapPort, smtpHost, smtpPort, username, password);
+  });
+
+  ipcMain.handle('delete-email-account', async (_, id: string): Promise<void> => {
+    deleteEmailAccount(id);
+  });
+
+  ipcMain.handle('get-email-messages', async (_, accountId: string, limit?: number): Promise<EmailMessage[]> => {
+    return getEmailMessages(accountId, limit ?? 50);
+  });
+
+  ipcMain.handle('sync-emails', async (_, accountId: string) => {
+    // Dynamic import to avoid issues
+    const { syncEmailAccount } = await import('./email');
+    return syncEmailAccount({ accountId });
   });
 }

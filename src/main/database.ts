@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { Budget, Member, Transaction, AssignmentHistory, AssignmentPattern, SmartAssignmentResult } from '../shared/types';
+import { Budget, Member, Transaction, AssignmentHistory, AssignmentPattern, SmartAssignmentResult, EmailAccount, EmailMessage } from '../shared/types';
 import { TRIAGE_RULES, matchTriageRule } from '../shared/constants';
 
 let db: any = null;
@@ -153,6 +153,42 @@ function ensureSchema(): void {
 
   database.run('CREATE INDEX IF NOT EXISTS idx_assignment_history_transaction ON assignment_history(transaction_id)');
   database.run('CREATE INDEX IF NOT EXISTS idx_assignment_patterns_key_value ON assignment_patterns(feature_key, feature_value)');
+
+  // Email accounts table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS email_accounts (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      imap_host TEXT NOT NULL,
+      imap_port INTEGER DEFAULT 993,
+      smtp_host TEXT,
+      smtp_port INTEGER DEFAULT 465,
+      username TEXT NOT NULL,
+      password TEXT NOT NULL,
+      last_sync TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // Email messages table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS email_messages (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      subject TEXT,
+      from_address TEXT,
+      date TEXT,
+      attachments TEXT,
+      processed INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES email_accounts(id) ON DELETE CASCADE
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_email_messages_account ON email_messages(account_id)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_email_messages_message_id ON email_messages(message_id)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_email_messages_processed ON email_messages(processed)');
 
   const now = new Date().toISOString();
   database.run(
@@ -1144,4 +1180,137 @@ export function batchAssignSimilar(
   }
 
   return toUpdate.length;
+}
+
+// ============== Email Account Functions ==============
+
+export function getEmailAccounts(): EmailAccount[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM email_accounts ORDER BY created_at DESC');
+  const results: EmailAccount[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as unknown as EmailAccount;
+    // Don't expose password in plain text
+    results.push({
+      ...row,
+      password: '********',
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export function addEmailAccount(
+  id: string,
+  email: string,
+  imapHost: string,
+  imapPort: number,
+  smtpHost: string,
+  smtpPort: number,
+  username: string,
+  password: string
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT INTO email_accounts (id, email, imap_host, imap_port, smtp_host, smtp_port, username, password, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, email, imapHost, imapPort, smtpHost, smtpPort, username, password, now]
+  );
+  saveDatabase();
+}
+
+export function deleteEmailAccount(id: string): void {
+  const database = getDatabase();
+  // Delete associated email messages first
+  database.run('DELETE FROM email_messages WHERE account_id = ?', [id]);
+  database.run('DELETE FROM email_accounts WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function updateEmailAccountLastSync(id: string): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run('UPDATE email_accounts SET last_sync = ? WHERE id = ?', [now, id]);
+  saveDatabase();
+}
+
+export function getEmailAccountById(id: string): EmailAccount | null {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM email_accounts WHERE id = ?');
+  stmt.bind([id]);
+  let account: EmailAccount | null = null;
+  if (stmt.step()) {
+    account = stmt.getAsObject() as unknown as EmailAccount;
+  }
+  stmt.free();
+  return account;
+}
+
+export function getEmailAccountPassword(id: string): string | null {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT password FROM email_accounts WHERE id = ?');
+  stmt.bind([id]);
+  let password: string | null = null;
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { password: string };
+    password = row.password;
+  }
+  stmt.free();
+  return password;
+}
+
+// ============== Email Message Functions ==============
+
+export function saveEmailMessage(
+  id: string,
+  accountId: string,
+  messageId: string,
+  subject: string | null,
+  fromAddress: string | null,
+  date: string | null,
+  attachments: string | null
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT OR REPLACE INTO email_messages (id, account_id, message_id, subject, from_address, date, attachments, processed, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?)`,
+    [id, accountId, messageId, subject, fromAddress, date, attachments, now]
+  );
+  saveDatabase();
+}
+
+export function getUnprocessedEmails(accountId: string): EmailMessage[] {
+  const database = getDatabase();
+  const stmt = database.prepare(
+    'SELECT * FROM email_messages WHERE account_id = ? AND processed = 0 ORDER BY date DESC'
+  );
+  stmt.bind([accountId]);
+  const results: EmailMessage[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as EmailMessage);
+  }
+  stmt.free();
+  return results;
+}
+
+export function markEmailAsProcessed(id: string): void {
+  const database = getDatabase();
+  database.run('UPDATE email_messages SET processed = 1 WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function getEmailMessages(accountId: string, limit = 50): EmailMessage[] {
+  const database = getDatabase();
+  const stmt = database.prepare(
+    'SELECT * FROM email_messages WHERE account_id = ? ORDER BY date DESC LIMIT ?'
+  );
+  stmt.bind([accountId, limit]);
+  const results: EmailMessage[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as EmailMessage);
+  }
+  stmt.free();
+  return results;
 }

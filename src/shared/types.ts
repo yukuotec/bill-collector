@@ -175,3 +175,44 @@ export interface SmartAssignmentApplyResult {
   skipped: number;
   results: SmartAssignmentResult[];
 }
+
+// Email types
+export interface EmailAccount {
+  id: string;
+  email: string;
+  imap_host: string;
+  imap_port: number;
+  smtp_host: string;
+  smtp_port: number;
+  username: string;
+  password: string;
+  last_sync?: string | null;
+  created_at: string;
+}
+
+export interface EmailAttachment {
+  filename: string;
+  contentType: string;
+  size: number;
+  path?: string;
+}
+
+export interface EmailMessage {
+  id: string;
+  account_id: string;
+  message_id: string;
+  subject?: string | null;
+  from_address?: string | null;
+  date?: string | null;
+  attachments?: string | null;
+  processed: number;
+  created_at: string;
+}
+
+export interface EmailSyncResult {
+  success: boolean;
+  emailsFound: number;
+  attachmentsDownloaded: number;
+  transactionsImported: number;
+  errors: string[];
+}
