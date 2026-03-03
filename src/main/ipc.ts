@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -13,7 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 
 type Source = TransactionSource;
@@ -1049,6 +1049,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       monthly,
       byCategory,
       topMerchants,
+      byMember: getMemberSpendingSummary(targetYear),
       availableYears: availableYears.length > 0 ? availableYears : [currentYear],
     };
   });
@@ -1261,5 +1262,30 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       currentMonth,
       previousMonth,
     };
+  });
+
+  // Member handlers
+  ipcMain.handle('get-members', async (): Promise<Member[]> => {
+    return getMembers();
+  });
+
+  ipcMain.handle('add-member', async (_, id: string, name: string, color: string): Promise<void> => {
+    addMember(id, name, color);
+  });
+
+  ipcMain.handle('update-member', async (_, id: string, name: string, color: string): Promise<void> => {
+    updateMember(id, name, color);
+  });
+
+  ipcMain.handle('delete-member', async (_, id: string): Promise<void> => {
+    deleteMember(id);
+  });
+
+  ipcMain.handle('set-transaction-member', async (_, transactionId: string, memberId: string | null): Promise<void> => {
+    setTransactionMember(transactionId, memberId);
+  });
+
+  ipcMain.handle('get-member-summary', async (_, year: number, month?: number): Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]> => {
+    return getMemberSpendingSummary(year, month);
   });
 }
