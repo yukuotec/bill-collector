@@ -1,3 +1,11 @@
+export interface Member {
+  id: string;
+  name: string;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Transaction {
   id: string;
   source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
@@ -14,6 +22,7 @@ export interface Transaction {
   category?: string;
   notes?: string;
   tags?: string;
+  member_id?: string | null;
   is_refund?: boolean | number;
   refund_of?: string | null;
   is_duplicate?: boolean | number;
@@ -64,6 +73,13 @@ export interface SummaryMerchantItem {
   total: number;
 }
 
+export interface MemberSummaryItem {
+  memberId: string;
+  memberName: string;
+  memberColor: string;
+  total: number;
+}
+
 export interface Summary {
   year: number;
   currentMonth: string;
@@ -75,6 +91,7 @@ export interface Summary {
   monthly: SummaryMonthlyItem[];
   byCategory: SummaryCategoryItem[];
   topMerchants: SummaryMerchantItem[];
+  byMember?: MemberSummaryItem[];
   availableYears: number[];
 }
 
@@ -93,6 +110,7 @@ export interface TransactionQuery {
   endDate?: string;
   duplicateType?: DuplicateType;
   refundOnly?: boolean;
+  memberId?: string;
   q?: string;
   page?: number;
   pageSize?: number;

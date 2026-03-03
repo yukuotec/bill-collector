@@ -2,7 +2,7 @@ import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { Budget, Transaction } from '../shared/types';
+import { Budget, Member, Transaction } from '../shared/types';
 
 let db: any = null;
 let dbPath: string = '';
@@ -73,6 +73,24 @@ function ensureSchema(): void {
     )
   `);
 
+  database.run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS members (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      color TEXT DEFAULT '#3B82F6',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   const columnsStmt = database.prepare("PRAGMA table_info('transactions')");
   const existingColumns = new Set<string>();
   while (columnsStmt.step()) {
@@ -100,6 +118,7 @@ function ensureSchema(): void {
   ensureColumn('merged_with', 'TEXT');
   ensureColumn('tags', 'TEXT');
   ensureColumn('currency', 'TEXT DEFAULT "CNY"');
+  ensureColumn('member_id', 'TEXT');
 
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
@@ -397,4 +416,138 @@ export function closeDatabase(): void {
     db.close();
     db = null;
   }
+}
+
+// Settings functions
+export function getSetting(key: string): string | null {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT value FROM settings WHERE key = ?');
+  stmt.bind([key]);
+  let value: string | null = null;
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { value?: string | null };
+    value = row.value ?? null;
+  }
+  stmt.free();
+  return value;
+}
+
+export function setSetting(key: string, value: string): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?`,
+    [key, value, now, value, now]
+  );
+  saveDatabase();
+}
+
+export function getAllSettings(): Record<string, string> {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT key, value FROM settings');
+  const settings: Record<string, string> = {};
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { key: string; value: string };
+    settings[row.key] = row.value;
+  }
+  stmt.free();
+  return settings;
+}
+
+// Member functions
+export function getMembers(): Member[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM members ORDER BY name ASC');
+  const results: Member[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as Member);
+  }
+  stmt.free();
+  return results;
+}
+
+export function addMember(id: string, name: string, color: string): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'INSERT INTO members (id, name, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?)',
+    [id, name, color || '#3B82F6', now, now]
+  );
+  saveDatabase();
+}
+
+export function updateMember(id: string, name: string, color: string): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'UPDATE members SET name = ?, color = ?, updated_at = ? WHERE id = ?',
+    [name, color || '#3B82F6', now, id]
+  );
+  saveDatabase();
+}
+
+export function deleteMember(id: string): void {
+  const database = getDatabase();
+  // First, update transactions to remove member_id reference
+  database.run('UPDATE transactions SET member_id = NULL WHERE member_id = ?', [id]);
+  // Then delete the member
+  database.run('DELETE FROM members WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function setTransactionMember(transactionId: string, memberId: string | null): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  if (memberId === null) {
+    database.run('UPDATE transactions SET member_id = NULL, updated_at = ? WHERE id = ?', [now, transactionId]);
+  } else {
+    database.run('UPDATE transactions SET member_id = ?, updated_at = ? WHERE id = ?', [memberId, now, transactionId]);
+  }
+  saveDatabase();
+}
+
+export function getMemberSpendingSummary(year: number, month?: number): { memberId: string; memberName: string; memberColor: string; total: number }[] {
+  const database = getDatabase();
+  
+  let dateFilter: string;
+  let params: (string | number)[];
+  
+  if (month !== undefined) {
+    const monthStr = String(month).padStart(2, '0');
+    dateFilter = `strftime('%Y-%m', date) = ?`;
+    params = [`${year}-${monthStr}`];
+  } else {
+    dateFilter = `strftime('%Y', date) = ?`;
+    params = [String(year)];
+  }
+
+  const sql = `
+    SELECT 
+      m.id as memberId,
+      m.name as memberName,
+      m.color as memberColor,
+      COALESCE(SUM(t.amount), 0) as total
+    FROM members m
+    LEFT JOIN transactions t ON m.id = t.member_id 
+      AND t.type = 'expense'
+      AND ${dateFilter}
+    GROUP BY m.id
+    ORDER BY total DESC
+  `;
+  
+  const stmt = database.prepare(sql);
+  stmt.bind(params);
+  const results: { memberId: string; memberName: string; memberColor: string; total: number }[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { memberId: string; memberName: string; memberColor: string; total: number };
+    results.push({
+      memberId: row.memberId,
+      memberName: row.memberName,
+      memberColor: row.memberColor,
+      total: Number(row.total),
+    });
+  }
+  stmt.free();
+  return results;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../shared/constants';
-import { DuplicateReviewItem, SortOrder, Transaction, TransactionQuery, TransactionSortBy } from '../../shared/types';
+import { DuplicateReviewItem, Member, SortOrder, Transaction, TransactionQuery, TransactionSortBy } from '../../shared/types';
 import { parseDrilldownQuery, removeDrilldownField, shouldApplyLatestResponse } from '../../shared/drilldown';
 
 interface FilterState {
@@ -10,6 +10,7 @@ interface FilterState {
   merchant: string;
   source: string;
   type: string;
+  memberId: string;
   q: string;
 }
 
@@ -31,6 +32,17 @@ const TYPE_LABELS: Record<string, string> = {
   income: '收入',
   transfer: '转账',
 };
+
+const MEMBER_COLORS = [
+  '#3B82F6', // blue
+  '#10B981', // green
+  '#EF4444', // red
+  '#8B5CF6', // purple
+  '#F59E0B', // orange
+  '#EC4899', // pink
+  '#14B8A6', // teal
+  '#6366F1', // indigo
+];
 
 // Helper functions to calculate date ranges
 function getStartOfWeek(date: Date): Date {
@@ -123,6 +135,7 @@ function isRefund(txn: Transaction): boolean {
 export default function Transactions({ locationSearch, onReplaceSearch }: TransactionsProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateReviewItem[]>([]);
+  const [members, setMembers] = useState<Member[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -133,6 +146,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [tempNotes, setTempNotes] = useState('');
   const [editableTags, setEditableTags] = useState<string | null>(null);
   const [tempTags, setTempTags] = useState('');
+  const [editableMember, setEditableMember] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -144,6 +158,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
     merchant: '',
     source: '',
     type: '',
+    memberId: '',
     q: '',
   });
   const drillQuery = useMemo(() => parseDrilldownQuery(locationSearch), [locationSearch]);
@@ -162,6 +177,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         merchant: filter.merchant || undefined,
         source: (filter.source || undefined) as TransactionQuery['source'],
         type: (filter.type || undefined) as TransactionQuery['type'],
+        memberId: filter.memberId || undefined,
         q: filter.q || undefined,
         page,
         pageSize,
@@ -198,6 +214,18 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
 
   useEffect(() => {
     loadDuplicates();
+  }, []);
+
+  useEffect(() => {
+    const loadMembers = async () => {
+      try {
+        const data = await window.electronAPI.getMembers();
+        setMembers(data);
+      } catch (error) {
+        console.error('Failed to load members:', error);
+      }
+    };
+    loadMembers();
   }, []);
 
   useEffect(() => {
@@ -487,6 +515,15 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           ))}
         </select>
 
+        <select value={filter.memberId} onChange={(e) => updateFilter({ memberId: e.target.value })}>
+          <option value="">所有成员</option>
+          {members.map((member) => (
+            <option key={member.id} value={member.id}>
+              {member.name}
+            </option>
+          ))}
+        </select>
+
         <select value={filter.source} onChange={(e) => updateFilter({ source: e.target.value })}>
           <option value="">所有来源</option>
           <option value="alipay">支付宝</option>
@@ -504,7 +541,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         <button
           className="btn-secondary"
           onClick={() => {
-            setFilter({ startDate: '', endDate: '', category: '', merchant: '', source: '', type: '', q: '' });
+            setFilter({ startDate: '', endDate: '', category: '', merchant: '', source: '', type: '', memberId: '', q: '' });
             setPage(1);
             setSortBy('date');
             setSortOrder('desc');
@@ -608,6 +645,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
               <th>备注</th>
               <th>标签</th>
               <th>分类</th>
+              <th>成员</th>
               <th>来源</th>
               <th>退款关联</th>
               <th>去重</th>
@@ -617,7 +655,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           <tbody>
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={13}>暂无数据</td>
+                <td colSpan={14}>暂无数据</td>
               </tr>
             )}
             {transactions.map((txn) => {
@@ -701,6 +739,26 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
                       </option>
                     ))}
                   </select>
+                </td>
+                <td>
+                  {txn.member_id ? (
+                    (() => {
+                      const member = members.find(m => m.id === txn.member_id);
+                      return member ? (
+                        <span
+                          className="member-color-badge"
+                          style={{ backgroundColor: member.color }}
+                          title={member.name}
+                        >
+                          {member.name}
+                        </span>
+                      ) : (
+                        '-'
+                      );
+                    })()
+                  ) : (
+                    '-'
+                  )}
                 </td>
                 <td>{SOURCE_LABELS[txn.source] || txn.source}</td>
                 <td>{isRefund(txn) ? (txn.refund_of ? `原交易: ${txn.refund_of}` : '退款(未匹配)') : '-'}</td>

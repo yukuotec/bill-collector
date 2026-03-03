@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react';
-import { Budget, BudgetAlert, DuplicateReviewItem, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
 import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
+import Members from './pages/Members';
 
 declare global {
   interface Window {
@@ -47,6 +48,12 @@ declare global {
       getTags: (id: string) => Promise<string[]>;
       addTag: (id: string, tag: string) => Promise<boolean>;
       removeTag: (id: string, tag: string) => Promise<boolean>;
+      getMembers: () => Promise<Member[]>;
+      addMember: (id: string, name: string, color: string) => Promise<void>;
+      updateMember: (id: string, name: string, color: string) => Promise<void>;
+      deleteMember: (id: string) => Promise<void>;
+      setTransactionMember: (transactionId: string, memberId: string | null) => Promise<void>;
+      getMemberSummary: (year: number, month?: number) => Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]>;
     };
   }
 }
@@ -54,6 +61,7 @@ declare global {
 const navItems = [
   { page: 'dashboard', label: '仪表盘', icon: '📊' },
   { page: 'budgets', label: '预算', icon: '💵' },
+  { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
   { page: 'import', label: '导入', icon: '📥' },
   { page: 'transactions', label: '交易记录', icon: '📋' },
 ] as const;
@@ -107,6 +115,7 @@ export default function App() {
           />
         )}
         {currentPage === 'budgets' && <Budgets />}
+        {currentPage === 'members' && <Members locationSearch={locationState.search} />}
         {currentPage === 'import' && <Import />}
         {currentPage === 'transactions' && (
           <Transactions

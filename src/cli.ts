@@ -12,6 +12,9 @@ import { parseAlipay } from './parsers/alipay';
 import { parseBank } from './parsers/bank';
 import { parseWechat } from './parsers/wechat';
 import { parseYunshanfu } from './parsers/yunshanfu';
+import { parsePdfBill } from './parsers/pdf';
+import { parseHtmlBill } from './parsers/html';
+import { parseImageBillWithOcr } from './parsers/ocr';
 import { type DuplicateType, type Transaction, type TransactionSource } from './shared/types';
 
 type DbRow = Record<string, unknown>;
@@ -88,6 +91,14 @@ async function openDatabase(): Promise<{ db: any; dbPath: string }> {
     )
   `);
 
+  db.run(`
+    CREATE TABLE IF NOT EXISTS settings (
+      key TEXT PRIMARY KEY,
+      value TEXT,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
   db.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
   db.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
   db.run('CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source)');
@@ -129,6 +140,39 @@ function closeDatabase(db: any, dbPath: string): void {
   db.close();
 }
 
+// Settings functions
+function getSetting(db: any, key: string): string | null {
+  const stmt = db.prepare('SELECT value FROM settings WHERE key = ?');
+  stmt.bind([key]);
+  let value: string | null = null;
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { value?: string | null };
+    value = row.value ?? null;
+  }
+  stmt.free();
+  return value;
+}
+
+function setSetting(db: any, key: string, value: string): void {
+  const now = new Date().toISOString();
+  db.run(
+    `INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+     ON CONFLICT(key) DO UPDATE SET value = ?, updated_at = ?`,
+    [key, value, now, value, now]
+  );
+}
+
+function getAllSettings(db: any): Record<string, string> {
+  const stmt = db.prepare('SELECT key, value FROM settings');
+  const settings: Record<string, string> = {};
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { key: string; value: string };
+    settings[row.key] = row.value;
+  }
+  stmt.free();
+  return settings;
+}
+
 function queryAll(db: any, sql: string, params: (string | number)[] = []): DbRow[] {
   const stmt = db.prepare(sql);
   stmt.bind(params);
@@ -162,6 +206,33 @@ function parseTransactionsBySource(content: string, source: TransactionSource): 
       return parseWechat(content);
     case 'yunshanfu':
       return parseYunshanfu(content);
+  }
+}
+
+async function parseTransactionsFromFile(filePath: string, source: TransactionSource): Promise<Transaction[]> {
+  const ext = path.extname(filePath).toLowerCase();
+
+  switch (ext) {
+    case '.csv': {
+      const content = fs.readFileSync(filePath, 'utf-8');
+      return parseTransactionsBySource(content, source);
+    }
+    case '.xlsx': {
+      // Use unzip to extract the first worksheet as CSV
+      // For xlsx, we need a more complex implementation - fall back to CSV parsing
+      // This is simplified; full implementation would need xlsx parsing
+      console.log(`warn: xlsx parsing is limited in CLI, consider converting to CSV first`);
+      return [];
+    }
+    case '.pdf':
+      return parsePdfBill(filePath, source);
+    case '.html':
+    case '.htm':
+      return parseHtmlBill(filePath, source);
+    case '.png':
+      return parseImageBillWithOcr(filePath, source);
+    default:
+      throw new Error(`暂不支持的文件类型: ${ext || 'unknown'}`);
   }
 }
 
@@ -622,7 +693,7 @@ function classifyCadenceStrict(avgIntervalDays: number): 'weekly' | 'monthly' | 
 function createCsvWatcher(watchPath: string): WatcherLike {
   if (chokidar) {
     return chokidar.watch(watchPath, {
-      ignored: (inputPath: string) => path.extname(inputPath).toLowerCase() !== '.csv',
+      depth: 0, // Watch only files directly in the directory, not subdirectories
       ignoreInitial: true,
       awaitWriteFinish: {
         stabilityThreshold: 400,
@@ -696,9 +767,18 @@ program
   .option('--source <source>', '来源: alipay|wechat|yunshanfu|bank')
   .option('--watch-dir <dir>', '监听目录中的新 CSV 并自动导入')
   .action(async (file: string | undefined, options: { source?: string; watchDir?: string }) => {
-    const importOne = (db: any, dbPath: string, filePath: string, source: TransactionSource): void => {
-      const content = decodeCsvContent(fs.readFileSync(filePath));
-      const transactions = parseTransactionsBySource(content, source);
+    const importOne = async (db: any, dbPath: string, filePath: string, source: TransactionSource): Promise<void> => {
+      const ext = path.extname(filePath).toLowerCase();
+      let transactions: Transaction[];
+
+      if (ext === '.csv') {
+        const content = decodeCsvContent(fs.readFileSync(filePath));
+        transactions = parseTransactionsBySource(content, source);
+      } else {
+        // Handle other formats: xlsx, pdf, html, png
+        transactions = await parseTransactionsFromFile(filePath, source);
+      }
+
       const result = insertTransactions(db, source, filePath, transactions);
       saveDatabase(db, dbPath);
       console.log(
@@ -706,11 +786,26 @@ program
       );
     };
 
-    if (options.watchDir) {
+    if (options.watchDir || file === undefined) {
+      // Check for default watch_dir setting if not provided
+      let watchDir = options.watchDir;
+      if (!watchDir) {
+        const { db: settingsDb } = await openDatabase();
+        const defaultWatchDir = getSetting(settingsDb, 'watch_dir');
+        settingsDb.close();
+        if (defaultWatchDir) {
+          watchDir = defaultWatchDir;
+        }
+      }
+
+      if (!watchDir) {
+        throw new Error('请提供 --watch-dir <dir> 或设置默认监听目录: expense-cli config set watch_dir <dir>');
+      }
+
       if (file) {
         throw new Error('使用 --watch-dir 时不需要提供 <file>');
       }
-      const watchPath = path.resolve(options.watchDir);
+      const watchPath = path.resolve(watchDir);
       if (!fs.existsSync(watchPath)) {
         throw new Error(`监听目录不存在: ${watchPath}`);
       }
@@ -738,7 +833,15 @@ program
         });
       });
 
+      // Supported file extensions
+      const supportedExtensions = ['.csv', '.xlsx', '.pdf', '.html', '.htm', '.png'];
+
       watcher.on('add', (addedPath: string) => {
+        const ext = path.extname(addedPath).toLowerCase();
+        // Skip unsupported file types
+        if (!supportedExtensions.includes(ext)) {
+          return;
+        }
         queue = queue
           .then(() => {
             const source = detectSourceFromFilename(addedPath);
@@ -786,6 +889,63 @@ program
     } finally {
       db.close();
     }
+  });
+
+// Config command
+const configCmd = program
+  .command('config')
+  .description('查看和设置配置');
+
+configCmd
+  .command('get <key>')
+  .description('获取配置值')
+  .action(async (key: string) => {
+    const { db } = await openDatabase();
+    const value = getSetting(db, key);
+    db.close();
+    if (value === null) {
+      console.log(`未设置: ${key}`);
+    } else {
+      console.log(`${key}=${value}`);
+    }
+  });
+
+configCmd
+  .command('set <key> <value>')
+  .description('设置配置值')
+  .action(async (key: string, value: string) => {
+    const { db, dbPath } = await openDatabase();
+    setSetting(db, key, value);
+    saveDatabase(db, dbPath);
+    db.close();
+    console.log(`已设置: ${key}=${value}`);
+  });
+
+configCmd
+  .command('list')
+  .description('列出所有配置')
+  .action(async () => {
+    const { db } = await openDatabase();
+    const settings = getAllSettings(db);
+    db.close();
+    if (Object.keys(settings).length === 0) {
+      console.log('暂无配置');
+    } else {
+      for (const [k, v] of Object.entries(settings)) {
+        console.log(`${k}=${v}`);
+      }
+    }
+  });
+
+configCmd
+  .command('delete <key>')
+  .description('删除配置')
+  .action(async (key: string) => {
+    const { db, dbPath } = await openDatabase();
+    db.run('DELETE FROM settings WHERE key = ?', [key]);
+    saveDatabase(db, dbPath);
+    db.close();
+    console.log(`已删除: ${key}`);
   });
 
 program

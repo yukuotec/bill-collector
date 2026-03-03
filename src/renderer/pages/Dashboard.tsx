@@ -147,6 +147,16 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
     [summary]
   );
 
+  const memberData = useMemo(
+    () =>
+      (summary?.byMember ?? []).map((item) => ({
+        name: item.memberName,
+        value: item.total,
+        color: item.memberColor,
+      })),
+    [summary]
+  );
+
   if (loading && !summary) return <div>加载中...</div>;
   if (!summary) return <div>暂无数据</div>;
 
@@ -356,6 +366,29 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
           </ResponsiveContainer>
         )}
       </div>
+
+      {memberData.length > 0 && (
+        <div className="chart-container">
+          <div className="chart-header">
+            <h3 className="chart-title">👥 成员支出统计</h3>
+            <span className="chart-subtitle">各成员支出占比</span>
+          </div>
+          <ResponsiveContainer width="100%" height={300}>
+            <BarChart data={memberData} layout="vertical" margin={{ top: 20, right: 30, left: 80, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis type="number" />
+              <YAxis type="category" dataKey="name" width={70} />
+              <Tooltip formatter={(value: number) => formatCurrency(value)} />
+              <Legend />
+              <Bar dataKey="value" name="支出" radius={[0, 4, 4, 0]}>
+                {memberData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.color} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      )}
 
       <div className="card">
         <div className="card-header">

@@ -35,6 +35,10 @@ export function buildTransactionWhereClause(filters?: TransactionQuery): { where
   if (filters?.refundOnly) {
     where.push('COALESCE(is_refund, 0) = 1');
   }
+  if (filters?.memberId) {
+    where.push('member_id = ?');
+    params.push(filters.memberId);
+  }
   if (filters?.q) {
     where.push('(description LIKE ? OR counterparty LIKE ? OR notes LIKE ?)');
     const keyword = `%${filters.q}%`;
