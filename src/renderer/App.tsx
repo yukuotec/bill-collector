@@ -8,6 +8,7 @@ import Budgets from './pages/Budgets';
 import Members from './pages/Members';
 import AssignTransactions from './pages/AssignTransactions';
 import EmailSettings from './pages/EmailSettings';
+import QuickAdd from './pages/QuickAdd';
 
 declare global {
   interface Window {
@@ -94,11 +95,16 @@ declare global {
         attachmentsDownloaded: number;
         errors: string[];
       }>;
+      // Quick Add APIs
+      createTransaction: (transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => Promise<{ id: string | null; success: boolean; error?: string }>;
+      getMerchantHistory: (limit?: number) => Promise<string[]>;
+      getCategories: () => Promise<string[]>;
     };
   }
 }
 
 const navItems = [
+  { page: 'quick-add', label: '快速记账', icon: '➕', highlight: true },
   { page: 'dashboard', label: '仪表盘', icon: '📊' },
   { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
@@ -140,7 +146,7 @@ export default function App() {
             <button
               key={item.page}
               onClick={() => navigate(item.page)}
-              className={currentPage === item.page ? 'active' : ''}
+              className={`${currentPage === item.page ? 'active' : ''} ${item.highlight ? 'highlight' : ''}`}
             >
               <span className="icon">{item.icon}</span>
               <span>{item.label}</span>
@@ -169,6 +175,7 @@ export default function App() {
         )}
         {currentPage === 'assign' && <AssignTransactions />}
         {currentPage === 'email-settings' && <EmailSettings />}
+        {currentPage === 'quick-add' && <QuickAdd onClose={() => navigate('dashboard')} />}
       </main>
     </div>
   );
