@@ -141,3 +141,37 @@ export interface BudgetAlert {
   percentage: number;
   status: 'ok' | 'warning' | 'exceeded';
 }
+
+// Smart Assignment Types
+export interface AssignmentHistory {
+  id: string;
+  transaction_id: string;
+  member_id: string;
+  feature_key: string;
+  feature_value: string;
+  created_at: string;
+}
+
+export interface AssignmentPattern {
+  id: string;
+  feature_key: string;
+  feature_value: string;
+  member_id: string;
+  count: number;
+  confidence: number;
+  updated_at: string;
+}
+
+export interface SmartAssignmentResult {
+  transactionId: string;
+  predictedMemberId: string | null;
+  confidence: number;
+  action: 'auto' | 'suggest' | 'none';
+}
+
+export interface SmartAssignmentApplyResult {
+  autoAssigned: number;
+  suggested: number;
+  skipped: number;
+  results: SmartAssignmentResult[];
+}

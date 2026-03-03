@@ -2,7 +2,8 @@ import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
 import { app } from 'electron';
-import { Budget, Member, Transaction } from '../shared/types';
+import { Budget, Member, Transaction, AssignmentHistory, AssignmentPattern, SmartAssignmentResult } from '../shared/types';
+import { TRIAGE_RULES, matchTriageRule } from '../shared/constants';
 
 let db: any = null;
 let dbPath: string = '';
@@ -124,6 +125,34 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_duplicate_type ON transactions(duplicate_type)');
+
+  // Smart Assignment tables
+  database.run(`
+    CREATE TABLE IF NOT EXISTS assignment_history (
+      id TEXT PRIMARY KEY,
+      transaction_id TEXT NOT NULL,
+      member_id TEXT NOT NULL,
+      feature_key TEXT NOT NULL,
+      feature_value TEXT NOT NULL,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  database.run(`
+    CREATE TABLE IF NOT EXISTS assignment_patterns (
+      id TEXT PRIMARY KEY,
+      feature_key TEXT NOT NULL,
+      feature_value TEXT NOT NULL,
+      member_id TEXT NOT NULL,
+      count INTEGER DEFAULT 1,
+      confidence REAL DEFAULT 0,
+      updated_at TEXT NOT NULL,
+      UNIQUE(feature_key, feature_value, member_id)
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_assignment_history_transaction ON assignment_history(transaction_id)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_assignment_patterns_key_value ON assignment_patterns(feature_key, feature_value)');
 
   const now = new Date().toISOString();
   database.run(
@@ -550,4 +579,345 @@ export function getMemberSpendingSummary(year: number, month?: number): { member
   }
   stmt.free();
   return results;
+}
+
+// ============== Smart Assignment Functions ==============
+
+/**
+ * Extract features from a transaction for learning/prediction
+ */
+function extractTransactionFeatures(txn: Transaction): Array<{ key: string; value: string }> {
+  const features: Array<{ key: string; value: string }> = [];
+
+  // Counterparty feature
+  if (txn.counterparty && txn.counterparty.trim()) {
+    features.push({ key: 'counterparty', value: txn.counterparty.trim().toLowerCase() });
+  }
+
+  // Category feature
+  if (txn.category && txn.category.trim()) {
+    features.push({ key: 'category', value: txn.category.trim().toLowerCase() });
+  }
+
+  // Description feature
+  if (txn.description && txn.description.trim()) {
+    features.push({ key: 'description', value: txn.description.trim().toLowerCase() });
+  }
+
+  // Merchant keyword - extract meaningful keywords from counterparty + description
+  const merchantText = [txn.counterparty, txn.description].filter(Boolean).join(' ').toLowerCase();
+  if (merchantText) {
+    // Extract first 2-3 significant words as merchant keyword
+    const words = merchantText
+      .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter((w) => w.length > 1)
+      .slice(0, 3);
+    if (words.length > 0) {
+      features.push({ key: 'merchant_keyword', value: words.join(' ') });
+    }
+  }
+
+  return features;
+}
+
+/**
+ * Learn from a transaction assignment (when user manually assigns a transaction to a member)
+ */
+export function learnAssignment(transactionId: string, memberId: string, transaction: Transaction): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  const features = extractTransactionFeatures(transaction);
+
+  // Record each feature in assignment_history
+  for (const feature of features) {
+    const historyId = `${transactionId}_${feature.key}_${Date.now()}`;
+    database.run(
+      `INSERT INTO assignment_history (id, transaction_id, member_id, feature_key, feature_value, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [historyId, transactionId, memberId, feature.key, feature.value, now]
+    );
+  }
+
+  // Update or insert patterns for each feature
+  for (const feature of features) {
+    // Check if pattern exists
+    const existingStmt = database.prepare(
+      `SELECT id, count FROM assignment_patterns WHERE feature_key = ? AND feature_value = ? AND member_id = ?`
+    );
+    existingStmt.bind([feature.key, feature.value, memberId]);
+
+    let existingCount = 0;
+    let existingId = '';
+    if (existingStmt.step()) {
+      const row = existingStmt.getAsObject() as { id: string; count: number };
+      existingId = row.id;
+      existingCount = row.count;
+    }
+    existingStmt.free();
+
+    if (existingId) {
+      // Update existing pattern
+      const newCount = existingCount + 1;
+      database.run(
+        `UPDATE assignment_patterns SET count = ?, updated_at = ? WHERE id = ?`,
+        [newCount, now, existingId]
+      );
+    } else {
+      // Insert new pattern
+      const patternId = `${feature.key}_${feature.value}_${memberId}_${Date.now()}`;
+      database.run(
+        `INSERT INTO assignment_patterns (id, feature_key, feature_value, member_id, count, confidence, updated_at)
+         VALUES (?, ?, ?, ?, 1, 0, ?)`,
+        [patternId, feature.key, feature.value, memberId, now]
+      );
+    }
+  }
+
+  // Recalculate confidence for all patterns with the same feature_key and feature_value
+  for (const feature of features) {
+    // Get total count for this feature combination
+    const totalStmt = database.prepare(
+      `SELECT SUM(count) as total FROM assignment_patterns WHERE feature_key = ? AND feature_value = ?`
+    );
+    totalStmt.bind([feature.key, feature.value]);
+    let totalCount = 0;
+    if (totalStmt.step()) {
+      const row = totalStmt.getAsObject() as { total?: number };
+      totalCount = Number(row.total ?? 0);
+    }
+    totalStmt.free();
+
+    if (totalCount > 0) {
+      // Update confidence for all patterns with this feature
+      const patternsStmt = database.prepare(
+        `SELECT id, count FROM assignment_patterns WHERE feature_key = ? AND feature_value = ?`
+      );
+      patternsStmt.bind([feature.key, feature.value]);
+
+      while (patternsStmt.step()) {
+        const row = patternsStmt.getAsObject() as { id: string; count: number };
+        const confidence = row.count / totalCount;
+        database.run(
+          `UPDATE assignment_patterns SET confidence = ?, updated_at = ? WHERE id = ?`,
+          [confidence, now, row.id]
+        );
+      }
+      patternsStmt.free();
+    }
+  }
+
+  saveDatabase();
+}
+
+/**
+ * Predict the most likely member for a transaction based on learned patterns
+ */
+export function predictMember(transaction: Transaction): SmartAssignmentResult {
+  const features = extractTransactionFeatures(transaction);
+  
+  if (features.length === 0) {
+    return {
+      transactionId: transaction.id,
+      predictedMemberId: null,
+      confidence: 0,
+      action: 'none',
+    };
+  }
+
+  const database = getDatabase();
+  const memberScores: Map<string, { score: number; weight: number }> = new Map();
+
+  // Query patterns that match any of the transaction features
+  // Priority: counterparty > category > description > merchant_keyword
+  const featurePriority: Record<string, number> = {
+    counterparty: 4,
+    category: 2,
+    description: 1,
+    merchant_keyword: 3,
+  };
+
+  for (const feature of features) {
+    const priority = featurePriority[feature.key] || 1;
+
+    const stmt = database.prepare(
+      `SELECT member_id, confidence FROM assignment_patterns 
+       WHERE feature_key = ? AND feature_value = ?`
+    );
+    stmt.bind([feature.key, feature.value]);
+
+    while (stmt.step()) {
+      const row = stmt.getAsObject() as { member_id: string; confidence: number };
+      const current = memberScores.get(row.member_id) || { score: 0, weight: 0 };
+      memberScores.set(row.member_id, {
+        score: current.score + row.confidence * priority,
+        weight: current.weight + priority,
+      });
+    }
+    stmt.free();
+  }
+
+  // Find the member with highest weighted score
+  let bestMemberId: string | null = null;
+  let bestScore = 0;
+  let bestWeight = 0;
+
+  for (const [memberId, data] of memberScores) {
+    if (data.weight > bestWeight || (data.weight === bestWeight && data.score > bestScore)) {
+      bestMemberId = memberId;
+      bestScore = data.score;
+      bestWeight = data.weight;
+    }
+  }
+
+  if (!bestMemberId) {
+    return {
+      transactionId: transaction.id,
+      predictedMemberId: null,
+      confidence: 0,
+      action: 'none',
+    };
+  }
+
+  // Get the highest confidence for the predicted member
+  const confidenceStmt = database.prepare(
+    `SELECT MAX(confidence) as max_confidence FROM assignment_patterns 
+     WHERE member_id = ? AND feature_key IN (${features.map(() => '?').join(',')})`
+  );
+  const featureKeys = features.map(f => f.key);
+  confidenceStmt.bind([bestMemberId, ...featureKeys]);
+  
+  let maxConfidence = 0;
+  if (confidenceStmt.step()) {
+    const row = confidenceStmt.getAsObject() as { max_confidence?: number };
+    maxConfidence = Number(row.max_confidence ?? 0);
+  }
+  confidenceStmt.free();
+
+  // Determine action based on confidence
+  let action: 'auto' | 'suggest' | 'none';
+  if (maxConfidence >= 0.7) {
+    action = 'auto';
+  } else if (maxConfidence >= 0.3) {
+    action = 'suggest';
+  } else {
+    action = 'none';
+  }
+
+  return {
+    transactionId: transaction.id,
+    predictedMemberId: bestMemberId,
+    confidence: maxConfidence,
+    action,
+  };
+}
+
+/**
+ * Get all learned assignment patterns
+ */
+export function getPatterns(): AssignmentPattern[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM assignment_patterns ORDER BY confidence DESC, count DESC');
+  const results: AssignmentPattern[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as AssignmentPattern);
+  }
+  stmt.free();
+  return results;
+}
+
+/**
+ * Delete a specific pattern
+ */
+export function deletePattern(id: string): boolean {
+  const database = getDatabase();
+  database.run('DELETE FROM assignment_patterns WHERE id = ?', [id]);
+  saveDatabase();
+  return true;
+}
+
+/**
+ * Clear all assignment history and patterns
+ */
+export function clearAllPatterns(): void {
+  const database = getDatabase();
+  database.run('DELETE FROM assignment_history');
+  database.run('DELETE FROM assignment_patterns');
+  saveDatabase();
+}
+
+// ============== Phase 1: Triage Rules Functions ==============
+
+/**
+ * Apply triage rules to a batch of transactions
+ * Returns suggested member IDs for each transaction based on keyword matching
+ */
+export function applyTriageRules(
+  transactions: Transaction[]
+): Array<{ transactionId: string; suggestedMemberId: string | null; matchedKeyword: string | null }> {
+  const members = getMembers();
+  
+  // Create a map from member name to member ID
+  const memberNameToId: Record<string, string> = {};
+  for (const member of members) {
+    memberNameToId[member.name] = member.id;
+  }
+
+  const results: Array<{ transactionId: string; suggestedMemberId: string | null; matchedKeyword: string | null }> = [];
+
+  for (const txn of transactions) {
+    const text = [txn.counterparty, txn.description].filter(Boolean).join(' ');
+    const matchedMemberName = matchTriageRule(text);
+    
+    let suggestedMemberId: string | null = null;
+    let matchedKeyword: string | null = null;
+
+    if (matchedMemberName && memberNameToId[matchedMemberName]) {
+      suggestedMemberId = memberNameToId[matchedMemberName];
+      
+      // Find the matched keyword for reference
+      for (const rule of TRIAGE_RULES) {
+        if (rule.memberName === matchedMemberName) {
+          const lowerText = text.toLowerCase();
+          for (const keyword of rule.keywords) {
+            if (lowerText.includes(keyword)) {
+              matchedKeyword = keyword;
+              break;
+            }
+          }
+          break;
+        }
+      }
+    }
+
+    results.push({
+      transactionId: txn.id,
+      suggestedMemberId,
+      matchedKeyword,
+    });
+  }
+
+  return results;
+}
+
+/**
+ * Apply triage rules and automatically assign members to transactions
+ * Returns the count of auto-assigned transactions
+ */
+export function autoApplyTriageRules(
+  transactions: Transaction[]
+): { assigned: number; results: Array<{ transactionId: string; suggestedMemberId: string | null; matchedKeyword: string | null }> } {
+  const results = applyTriageRules(transactions);
+  let assigned = 0;
+
+  // Only auto-assign when we have a confident match
+  for (const result of results) {
+    if (result.suggestedMemberId) {
+      setTransactionMember(result.transactionId, result.suggestedMemberId);
+      assigned += 1;
+    }
+  }
+
+  return { assigned, results };
 }

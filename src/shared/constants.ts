@@ -25,3 +25,54 @@ export function categorize(description: string): Category {
   
   return '其他';
 }
+
+// ============== Smart Assignment Triage Rules (Phase 1) ==============
+
+export interface TriageRule {
+  memberName: string;
+  keywords: string[];
+}
+
+/**
+ * Default triage rules for smart assignment
+ * Maps keywords to family members
+ */
+export const TRIAGE_RULES: TriageRule[] = [
+  {
+    memberName: '老公',
+    keywords: ['游戏', '数码', '电子', '汽车', '烟', '酒'],
+  },
+  {
+    memberName: '老婆',
+    keywords: ['化妆品', '护肤', '包包', '服饰', '美甲'],
+  },
+  {
+    memberName: '孩子',
+    keywords: ['学校', '培训', '玩具', '奶粉', '童装'],
+  },
+  {
+    memberName: '家庭',
+    keywords: ['水电煤', '物业', '买菜', '日用品'],
+  },
+];
+
+/**
+ * Check if a transaction description or counterparty matches any triage rule
+ * @param text - The text to check (description or counterparty)
+ * @returns The member name that matches, or null if no match
+ */
+export function matchTriageRule(text: string): string | null {
+  if (!text) return null;
+  
+  const lowerText = text.toLowerCase();
+  
+  for (const rule of TRIAGE_RULES) {
+    for (const keyword of rule.keywords) {
+      if (lowerText.includes(keyword)) {
+        return rule.memberName;
+      }
+    }
+  }
+  
+  return null;
+}
