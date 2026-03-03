@@ -1466,3 +1466,315 @@ select {
 .modal-actions .btn-secondary:hover {
   background: var(--border-light);
 }
+
+/* ============================================
+   Assign Transactions Page
+   ============================================ */
+.assign-page {
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 64px);
+}
+
+.assign-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 24px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.assign-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.assign-title h2 {
+  font-size: 22px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0;
+}
+
+.assign-title .icon {
+  font-size: 24px;
+}
+
+.assign-title .badge {
+  background: var(--primary-light);
+  color: var(--primary);
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.assign-actions {
+  display: flex;
+  gap: 12px;
+}
+
+.assign-content {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+  flex: 1;
+  overflow: hidden;
+}
+
+.unassigned-list {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.transaction-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.transaction-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
+  border-radius: 12px;
+  padding: 16px;
+  cursor: grab;
+  transition: var(--transition);
+  box-shadow: var(--shadow-sm);
+}
+
+.transaction-card:hover {
+  box-shadow: var(--shadow-md);
+  border-color: var(--primary-light);
+}
+
+.transaction-card.dragging {
+  opacity: 0.6;
+  transform: scale(1.02);
+  box-shadow: var(--shadow-lg);
+}
+
+.transaction-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.transaction-amount {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.transaction-category {
+  background: var(--border-light);
+  color: var(--text-secondary);
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.transaction-card-body {
+  margin-bottom: 8px;
+}
+
+.transaction-merchant {
+  color: var(--text-secondary);
+  font-size: 14px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transaction-card-footer {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.transaction-date {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.member-boxes {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 20px;
+  padding: 24px;
+  background: var(--bg-card);
+  border-radius: 16px;
+  border: 1px solid var(--border-light);
+}
+
+.member-box {
+  background: var(--bg-main);
+  border: 2px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  text-align: center;
+  transition: var(--transition);
+  min-height: 140px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.member-box.droppable {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  transform: scale(1.05);
+}
+
+.member-box-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.member-icon {
+  font-size: 28px;
+}
+
+.member-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.member-box-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.member-total {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.member-count {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 20px;
+  text-align: center;
+}
+
+.empty-icon {
+  width: 64px;
+  height: 64px;
+  background: var(--success-light);
+  color: var(--success);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+.empty-members {
+  grid-column: span 4;
+  text-align: center;
+  padding: 40px;
+  color: var(--text-secondary);
+}
+
+.assign-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 300px;
+}
+
+.loading-spinner {
+  color: var(--text-secondary);
+  font-size: 16px;
+}
+
+/* Similar Assignment Modal */
+.similar-list {
+  max-height: 200px;
+  overflow-y: auto;
+  margin-top: 16px;
+  border: 1px solid var(--border-light);
+  border-radius: 8px;
+}
+
+.similar-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px;
+  border-bottom: 1px solid var(--border-light);
+}
+
+.similar-item:last-child {
+  border-bottom: none;
+}
+
+.similar-merchant {
+  flex: 1;
+  color: var(--text-primary);
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.similar-amount {
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 16px;
+}
+
+.similar-date {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+.similar-more {
+  padding: 12px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1200px) {
+  .member-boxes {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .member-boxes {
+    grid-template-columns: repeat(2, 1fr);
+    padding: 16px;
+    gap: 12px;
+  }
+  
+  .member-box {
+    padding: 16px;
+  }
+}
