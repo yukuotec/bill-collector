@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -1301,5 +1301,14 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
 
   ipcMain.handle('auto-apply-triage-rules', async (_, transactions: Transaction[]) => {
     return autoApplyTriageRules(transactions);
+  });
+
+  // Batch Assignment Prompt handlers
+  ipcMain.handle('check-similar-assignments', async (_, transaction: Transaction, memberId: string, threshold?: number) => {
+    return checkSimilarAssignments(transaction, memberId, threshold ?? 2);
+  });
+
+  ipcMain.handle('batch-assign-similar', async (_, transaction: Transaction, memberId: string) => {
+    return batchAssignSimilar(transaction, memberId);
   });
 }

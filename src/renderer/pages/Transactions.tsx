@@ -147,6 +147,11 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [editableTags, setEditableTags] = useState<string | null>(null);
   const [tempTags, setTempTags] = useState('');
   const [editableMember, setEditableMember] = useState<string | null>(null);
+  const [pendingMemberAssignment, setPendingMemberAssignment] = useState<{
+    transaction: Transaction;
+    memberId: string;
+    memberName: string;
+  } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const tagsInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -339,6 +344,53 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
 
   const handleRemoveTag = async (id: string, tag: string) => {
     await window.electronAPI.removeTag(id, tag);
+    await loadTransactions();
+  };
+
+  const handleMemberAssignment = async (transaction: Transaction, memberId: string | null) => {
+    if (memberId === null) {
+      // If unassigning, just do it directly
+      await window.electronAPI.setTransactionMember(transaction.id, null);
+      await loadTransactions();
+      return;
+    }
+
+    // First, assign the current transaction
+    await window.electronAPI.setTransactionMember(transaction.id, memberId);
+
+    // Check for similar assignments
+    const result = await window.electronAPI.checkSimilarAssignments(transaction, memberId, 2);
+
+    if (result.shouldPrompt && result.similarCount >= 2) {
+      // Store pending assignment and show prompt
+      setPendingMemberAssignment({
+        transaction,
+        memberId,
+        memberName: result.memberName,
+      });
+    } else {
+      // No prompt needed, just refresh
+      await loadTransactions();
+    }
+  };
+
+  const handleBatchAssignConfirm = async () => {
+    if (!pendingMemberAssignment) return;
+
+    const { transaction, memberId } = pendingMemberAssignment;
+
+    // Batch assign similar transactions
+    const updatedCount = await window.electronAPI.batchAssignSimilar(transaction, memberId);
+    console.log(`Batch assigned ${updatedCount} similar transactions`);
+
+    // Clear pending and refresh
+    setPendingMemberAssignment(null);
+    await loadTransactions();
+  };
+
+  const handleBatchAssignCancel = async () => {
+    // Just clear the pending state, the transaction is already assigned
+    setPendingMemberAssignment(null);
     await loadTransactions();
   };
 
@@ -741,24 +793,18 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
                   </select>
                 </td>
                 <td>
-                  {txn.member_id ? (
-                    (() => {
-                      const member = members.find(m => m.id === txn.member_id);
-                      return member ? (
-                        <span
-                          className="member-color-badge"
-                          style={{ backgroundColor: member.color }}
-                          title={member.name}
-                        >
-                          {member.name}
-                        </span>
-                      ) : (
-                        '-'
-                      );
-                    })()
-                  ) : (
-                    '-'
-                  )}
+                  <select
+                    value={txn.member_id || ''}
+                    onChange={(e) => handleMemberAssignment(txn, e.target.value || null)}
+                    className="member-select"
+                  >
+                    <option value="">-</option>
+                    {members.map((member) => (
+                      <option key={member.id} value={member.id}>
+                        {member.name}
+                      </option>
+                    ))}
+                  </select>
                 </td>
                 <td>{SOURCE_LABELS[txn.source] || txn.source}</td>
                 <td>{isRefund(txn) ? (txn.refund_of ? `原交易: ${txn.refund_of}` : '退款(未匹配)') : '-'}</td>
@@ -810,6 +856,27 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           </button>
         </div>
       </div>
+
+      {/* Batch Assignment Prompt Modal */}
+      {pendingMemberAssignment && (
+        <div className="modal-overlay" onClick={handleBatchAssignCancel}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <h3>批量分配确认</h3>
+            <p>
+              检测到 <strong>{pendingMemberAssignment.memberName}</strong> 已有 2 笔或更多相似交易（相同商户/分类）。
+            </p>
+            <p>是否将所有相似交易都分配给 <strong>{pendingMemberAssignment.memberName}</strong>？</p>
+            <div className="modal-actions">
+              <button className="btn-secondary" onClick={handleBatchAssignCancel}>
+                仅分配当前交易
+              </button>
+              <button className="btn-primary" onClick={handleBatchAssignConfirm}>
+                批量应用
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
