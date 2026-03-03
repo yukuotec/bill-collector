@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, applySmartAssignment, getPatterns, deletePattern } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -13,7 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, PredictionResult, ApplySmartAssignmentResult, AssignmentPattern } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 
 type Source = TransactionSource;
@@ -23,6 +23,7 @@ interface ImportCsvOptions {
   dryRun?: boolean;
   previewLimit?: number;
   currency?: string;
+  applySmartAssignment?: boolean;
 }
 
 interface ImportCsvResult {
@@ -38,6 +39,7 @@ interface ImportCsvResult {
   preview: Array<Pick<Transaction, 'date' | 'type' | 'amount' | 'counterparty' | 'description' | 'category'>>;
   columns?: string[];
   columnMapping?: Record<string, string>;
+  smartAssignment?: ApplySmartAssignmentResult;
 }
 
 interface DuplicateCandidate {
@@ -818,6 +820,17 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       linkRefundTransactions(importId);
       saveDatabase();
 
+      // Apply smart assignment if enabled
+      if (options?.applySmartAssignment && result.inserted > 0) {
+        const smartAssignmentTxns = toInsert.map(txn => ({
+          id: txn.id,
+          counterparty: txn.counterparty,
+          category: txn.category,
+          description: txn.description,
+        }));
+        result.smartAssignment = applySmartAssignment(smartAssignmentTxns);
+      }
+
       result.importId = importId;
       return result;
     } catch (error) {
@@ -1282,10 +1295,69 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   });
 
   ipcMain.handle('set-transaction-member', async (_, transactionId: string, memberId: string | null): Promise<void> => {
+    // Get transaction details for learning
+    let counterparty: string | undefined;
+    let category: string | undefined;
+    let description: string | undefined;
+    
+    if (memberId) {
+      const db = getDatabase();
+      const stmt = db.prepare('SELECT counterparty, category, description FROM transactions WHERE id = ?');
+      stmt.bind([transactionId]);
+      if (stmt.step()) {
+        const row = stmt.getAsObject() as { counterparty?: string; category?: string; description?: string };
+        counterparty = row.counterparty;
+        category = row.category;
+        description = row.description;
+      }
+      stmt.free();
+      
+      // Learn from this assignment
+      learnAssignment({
+        transactionId,
+        memberId,
+        counterparty,
+        category,
+        description,
+      });
+    }
+    
     setTransactionMember(transactionId, memberId);
   });
 
   ipcMain.handle('get-member-summary', async (_, year: number, month?: number): Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]> => {
     return getMemberSpendingSummary(year, month);
+  });
+
+  // Smart Assignment handlers
+  ipcMain.handle('learn-assignment', async (_, params: {
+    transactionId: string;
+    memberId: string;
+    counterparty?: string;
+    category?: string;
+    description?: string;
+  }): Promise<void> => {
+    learnAssignment(params);
+  });
+
+  ipcMain.handle('predict-member', async (_, transactionId: string, counterparty?: string, category?: string, description?: string) => {
+    return predictMember(transactionId, counterparty, category, description);
+  });
+
+  ipcMain.handle('apply-smart-assignment', async (_, transactions: Array<{
+    id: string;
+    counterparty?: string;
+    category?: string;
+    description?: string;
+  }>) => {
+    return applySmartAssignment(transactions);
+  });
+
+  ipcMain.handle('get-patterns', async () => {
+    return getPatterns();
+  });
+
+  ipcMain.handle('delete-pattern', async (_, id: string): Promise<boolean> => {
+    return deletePattern(id);
   });
 }
