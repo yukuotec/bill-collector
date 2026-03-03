@@ -1097,6 +1097,80 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     return { deleted: ids.length };
   });
 
+  // Quick Add - Create single transaction
+  ipcMain.handle('create-transaction', async (_, transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => {
+    const db = getDatabase();
+    const now = new Date().toISOString();
+    const id = generateId();
+    
+    try {
+      db.run(
+        `INSERT INTO transactions (
+          id, source, import_id, original_source, original_id, date, amount, currency,
+          type, counterparty, description, bank_name, category, notes, tags,
+          member_id, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type,
+          merged_with, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          id,
+          transaction.source || 'manual',
+          transaction.import_id || null,
+          transaction.original_source || null,
+          transaction.original_id || null,
+          transaction.date,
+          transaction.amount,
+          transaction.currency || 'CNY',
+          transaction.type || 'expense',
+          transaction.counterparty || null,
+          transaction.description || null,
+          transaction.bank_name || null,
+          transaction.category || '其他',
+          transaction.notes || null,
+          transaction.tags || null,
+          transaction.member_id || null,
+          transaction.is_refund ? 1 : 0,
+          transaction.refund_of || null,
+          0,
+          null,
+          null,
+          null,
+          now,
+          now,
+        ]
+      );
+      saveDatabase();
+      return { id, success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      return { id: null, success: false, error: message };
+    }
+  });
+
+  // Get merchant history for autocomplete
+  ipcMain.handle('get-merchant-history', async (_, limit: number = 20): Promise<string[]> => {
+    const rows = queryAll(
+      `SELECT DISTINCT counterparty 
+       FROM transactions 
+       WHERE counterparty IS NOT NULL 
+         AND TRIM(counterparty) != ''
+       ORDER BY date DESC, created_at DESC 
+       LIMIT ?`,
+      [limit]
+    );
+    return rows.map(row => String(row.counterparty || '')).filter(Boolean);
+  });
+
+  // Get categories list
+  ipcMain.handle('get-categories', async (): Promise<string[]> => {
+    const rows = queryAll(
+      `SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), '其他') as category
+       FROM transactions
+       WHERE category IS NOT NULL
+       ORDER BY category`
+    );
+    return rows.map(row => String(row.category || '其他'));
+  });
+
   ipcMain.handle('export-csv', async (_, ids?: string[]) => {
     let transactions;
     if (ids && ids.length > 0) {
