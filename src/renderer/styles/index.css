@@ -1376,3 +1376,93 @@ select {
   background: var(--border-light);
   color: var(--text-muted);
 }
+
+/* Member Select in Transactions Table */
+.member-select {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 80px;
+}
+
+.member-select:hover {
+  border-color: var(--primary);
+}
+
+/* Modal Styles */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: var(--bg);
+  border-radius: 8px;
+  padding: 24px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.modal h3 {
+  margin: 0 0 16px;
+  color: var(--text);
+  font-size: 18px;
+}
+
+.modal p {
+  margin: 8px 0;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.modal strong {
+  color: var(--primary);
+}
+
+.modal-actions {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.modal-actions button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.modal-actions .btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.modal-actions .btn-primary:hover {
+  background: var(--primary-dark);
+}
+
+.modal-actions .btn-secondary {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.modal-actions .btn-secondary:hover {
+  background: var(--border-light);
+}

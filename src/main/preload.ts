@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Summary, SummaryQuery, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -67,4 +67,34 @@ contextBridge.exposeInMainWorld('electronAPI', {
     currentMonth: string;
     previousMonth: string;
   }> => ipcRenderer.invoke('get-monthly-trend', months),
+  
+  // Batch Assignment Prompt APIs
+  getMembers: (): Promise<Member[]> => ipcRenderer.invoke('get-members'),
+  
+  checkSimilarAssignments: (
+    transaction: Transaction,
+    memberId: string,
+    threshold?: number
+  ): Promise<{
+    similarCount: number;
+    memberId: string;
+    memberName: string;
+    shouldPrompt: boolean;
+    similarTransactions: Array<{
+      id: string;
+      counterparty: string | null;
+      description: string | null;
+      category: string | null;
+      date: string;
+      amount: number;
+    }>;
+  }> => ipcRenderer.invoke('check-similar-assignments', transaction, memberId, threshold),
+  
+  batchAssignSimilar: (
+    transaction: Transaction,
+    memberId: string
+  ): Promise<number> => ipcRenderer.invoke('batch-assign-similar', transaction, memberId),
+  
+  setTransactionMember: (transactionId: string, memberId: string | null): Promise<void> =>
+    ipcRenderer.invoke('set-transaction-member', transactionId, memberId),
 });

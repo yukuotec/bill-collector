@@ -921,3 +921,227 @@ export function autoApplyTriageRules(
 
   return { assigned, results };
 }
+
+// ============== Batch Assignment Prompt Functions ==============
+
+interface SimilarAssignmentResult {
+  similarCount: number;
+  memberId: string;
+  memberName: string;
+  shouldPrompt: boolean;
+  similarTransactions: Array<{
+    id: string;
+    counterparty: string | null;
+    description: string | null;
+    category: string | null;
+    date: string;
+    amount: number;
+  }>;
+}
+
+/**
+ * Extract keywords from description (first 3 significant words)
+ */
+function extractKeywords(text: string | null | undefined): string[] {
+  if (!text) return [];
+  
+  const words = text
+    .toLowerCase()
+    .replace(/[\s\p{P}\p{S}]+/gu, ' ')
+    .trim()
+    .split(/\s+/)
+    .filter((w) => w.length > 1)
+    .slice(0, 3);
+  
+  return words;
+}
+
+/**
+ * Check for similar transactions that have been assigned to the same member
+ * Returns information about similar assignments and whether to prompt the user
+ */
+export function checkSimilarAssignments(
+  transaction: Transaction,
+  memberId: string,
+  threshold: number = 2
+): SimilarAssignmentResult {
+  const database = getDatabase();
+  const member = getMembers().find(m => m.id === memberId);
+  
+  if (!member) {
+    return {
+      similarCount: 0,
+      memberId,
+      memberName: '',
+      shouldPrompt: false,
+      similarTransactions: [],
+    };
+  }
+
+  // Extract features from the current transaction
+  const counterparty = transaction.counterparty?.trim().toLowerCase() || '';
+  const category = transaction.category?.trim().toLowerCase() || '';
+  const descriptionKeywords = extractKeywords(transaction.description);
+  
+  // Query for existing transactions assigned to this member
+  const stmt = database.prepare(`
+    SELECT id, counterparty, description, category, date, amount
+    FROM transactions
+    WHERE member_id = ?
+      AND id != ?
+      AND (
+        (counterparty IS NOT NULL AND LOWER(TRIM(counterparty)) = ?)
+        OR (category IS NOT NULL AND LOWER(TRIM(category)) = ?)
+      )
+  `);
+  stmt.bind([memberId, transaction.id, counterparty, category]);
+
+  const similarTransactions: SimilarAssignmentResult['similarTransactions'] = [];
+  
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as {
+      id: string;
+      counterparty: string | null;
+      description: string | null;
+      category: string | null;
+      date: string;
+      amount: number;
+    };
+    
+    let isSimilar = false;
+    
+    // Check counterparty match
+    if (counterparty && row.counterparty) {
+      if (row.counterparty.trim().toLowerCase() === counterparty) {
+        isSimilar = true;
+      }
+    }
+    
+    // Check category match
+    if (!isSimilar && category && row.category) {
+      if (row.category.trim().toLowerCase() === category) {
+        isSimilar = true;
+      }
+    }
+    
+    // Check description keywords match (at least 2 keywords match)
+    if (!isSimilar && descriptionKeywords.length >= 2 && row.description) {
+      const rowKeywords = extractKeywords(row.description);
+      const matchingKeywords = descriptionKeywords.filter(kw => 
+        rowKeywords.some(rowKw => rowKw.includes(kw) || kw.includes(rowKw))
+      );
+      if (matchingKeywords.length >= 2) {
+        isSimilar = true;
+      }
+    }
+    
+    if (isSimilar) {
+      similarTransactions.push({
+        id: row.id,
+        counterparty: row.counterparty,
+        description: row.description,
+        category: row.category,
+        date: row.date,
+        amount: row.amount,
+      });
+    }
+  }
+  stmt.free();
+
+  const similarCount = similarTransactions.length;
+  
+  return {
+    similarCount,
+    memberId,
+    memberName: member.name,
+    shouldPrompt: similarCount >= threshold,
+    similarTransactions,
+  };
+}
+
+/**
+ * Batch assign similar transactions to a member based on the current transaction's features
+ * Returns the number of transactions updated
+ */
+export function batchAssignSimilar(
+  transaction: Transaction,
+  memberId: string
+): number {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  
+  // Extract features from the current transaction
+  const counterparty = transaction.counterparty?.trim().toLowerCase() || '';
+  const category = transaction.category?.trim().toLowerCase() || '';
+  const descriptionKeywords = extractKeywords(transaction.description);
+
+  // Find similar unassigned or differently assigned transactions
+  // Only update transactions that are NOT already assigned to this member
+  const findStmt = database.prepare(`
+    SELECT id, counterparty, description, category
+    FROM transactions
+    WHERE member_id != ? 
+      AND member_id IS NOT NULL
+      AND id != ?
+      AND (
+        (counterparty IS NOT NULL AND LOWER(TRIM(counterparty)) = ?)
+        OR (category IS NOT NULL AND LOWER(TRIM(category)) = ?)
+      )
+  `);
+  findStmt.bind([memberId, transaction.id, counterparty, category]);
+
+  const toUpdate: string[] = [];
+  
+  while (findStmt.step()) {
+    const row = findStmt.getAsObject() as {
+      id: string;
+      counterparty: string | null;
+      description: string | null;
+      category: string | null;
+    };
+    
+    let isSimilar = false;
+    
+    // Check counterparty match
+    if (counterparty && row.counterparty) {
+      if (row.counterparty.trim().toLowerCase() === counterparty) {
+        isSimilar = true;
+      }
+    }
+    
+    // Check category match
+    if (!isSimilar && category && row.category) {
+      if (row.category.trim().toLowerCase() === category) {
+        isSimilar = true;
+      }
+    }
+    
+    // Check description keywords match (at least 2 keywords match)
+    if (!isSimilar && descriptionKeywords.length >= 2 && row.description) {
+      const rowKeywords = extractKeywords(row.description);
+      const matchingKeywords = descriptionKeywords.filter(kw => 
+        rowKeywords.some(rowKw => rowKw.includes(kw) || kw.includes(rowKw))
+      );
+      if (matchingKeywords.length >= 2) {
+        isSimilar = true;
+      }
+    }
+    
+    if (isSimilar) {
+      toUpdate.push(row.id);
+    }
+  }
+  findStmt.free();
+
+  // Update all similar transactions
+  if (toUpdate.length > 0) {
+    const placeholders = toUpdate.map(() => '?').join(',');
+    database.run(
+      `UPDATE transactions SET member_id = ?, updated_at = ? WHERE id IN (${placeholders})`,
+      [memberId, now, ...toUpdate]
+    );
+    saveDatabase();
+  }
+
+  return toUpdate.length;
+}
