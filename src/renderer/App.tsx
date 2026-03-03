@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, EmailAccount, EmailMessage } from '../shared/types';
 import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
@@ -7,6 +7,7 @@ import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Members from './pages/Members';
 import AssignTransactions from './pages/AssignTransactions';
+import EmailSettings from './pages/EmailSettings';
 
 declare global {
   interface Window {
@@ -74,6 +75,25 @@ declare global {
         }>;
       }>;
       batchAssignSimilar: (transaction: Transaction, memberId: string) => Promise<number>;
+      getEmailAccounts: () => Promise<EmailAccount[]>;
+      addEmailAccount: (
+        id: string,
+        email: string,
+        imapHost: string,
+        imapPort: number,
+        smtpHost: string,
+        smtpPort: number,
+        username: string,
+        password: string
+      ) => Promise<void>;
+      deleteEmailAccount: (id: string) => Promise<void>;
+      getEmailMessages: (accountId: string, limit?: number) => Promise<EmailMessage[]>;
+      syncEmails: (accountId: string) => Promise<{
+        success: boolean;
+        emailsFound: number;
+        attachmentsDownloaded: number;
+        errors: string[];
+      }>;
     };
   }
 }
@@ -85,6 +105,7 @@ const navItems = [
   { page: 'assign', label: '分配交易', icon: '📤' },
   { page: 'import', label: '导入', icon: '📥' },
   { page: 'transactions', label: '交易记录', icon: '📋' },
+  { page: 'email-settings', label: '邮箱设置', icon: '📧' },
 ] as const;
 
 export default function App() {
@@ -147,6 +168,7 @@ export default function App() {
           />
         )}
         {currentPage === 'assign' && <AssignTransactions />}
+        {currentPage === 'email-settings' && <EmailSettings />}
       </main>
     </div>
   );

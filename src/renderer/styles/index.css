@@ -1778,3 +1778,219 @@ select {
     padding: 16px;
   }
 }
+
+/* ============================================
+   Email Settings Page
+   ============================================ */
+.email-settings .page-header {
+  margin-bottom: 24px;
+}
+
+.email-settings .page-header h1 {
+  margin-bottom: 4px;
+}
+
+.email-settings .subtitle {
+  color: var(--text-secondary);
+}
+
+.email-settings .section {
+  background: var(--bg-card);
+  border-radius: 8px;
+  padding: 20px;
+  margin-bottom: 20px;
+  box-shadow: var(--shadow-sm);
+}
+
+.email-settings .section-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.email-settings .section h2 {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 16px;
+}
+
+.email-settings .section-header h2 {
+  margin-bottom: 0;
+}
+
+.email-settings .empty-state {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-secondary);
+}
+
+.email-settings .empty-state .hint {
+  color: var(--text-muted);
+  font-size: 13px;
+  margin-top: 8px;
+}
+
+.email-settings .account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.email-settings .account-card {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  background: var(--bg-main);
+  border-radius: 8px;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.email-settings .account-card:hover {
+  border-color: var(--primary-light);
+}
+
+.email-settings .account-card.selected {
+  border-color: var(--primary);
+  background: var(--primary-light);
+}
+
+.email-settings .account-info {
+  flex: 1;
+}
+
+.email-settings .account-email {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 4px;
+}
+
+.email-settings .account-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.email-settings .account-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.email-settings .form {
+  max-width: 600px;
+}
+
+.email-settings .form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.email-settings .form-group {
+  margin-bottom: 16px;
+}
+
+.email-settings .form-group label {
+  display: block;
+  font-weight: 500;
+  margin-bottom: 6px;
+  font-size: 14px;
+}
+
+.email-settings .form-group input,
+.email-settings .form-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font-size: 14px;
+  transition: var(--transition);
+}
+
+.email-settings .form-group input:focus,
+.email-settings .form-group select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.email-settings .form-group .hint {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.email-settings .form-actions {
+  margin-top: 20px;
+}
+
+.email-settings .message-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.email-settings .message-item {
+  padding: 12px 16px;
+  background: var(--bg-main);
+  border-radius: 6px;
+}
+
+.email-settings .message-item.processed {
+  opacity: 0.7;
+}
+
+.email-settings .message-subject {
+  font-weight: 500;
+  margin-bottom: 4px;
+}
+
+.email-settings .message-meta {
+  display: flex;
+  gap: 16px;
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.email-settings .message-status {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+
+.email-settings .help-content h3 {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 16px 0 8px 0;
+  color: var(--text-primary);
+}
+
+.email-settings .help-content h3:first-child {
+  margin-top: 0;
+}
+
+.email-settings .help-content p {
+  color: var(--text-secondary);
+  margin-bottom: 8px;
+  line-height: 1.5;
+}
+
+.email-settings .help-content ul {
+  margin-left: 20px;
+  color: var(--text-secondary);
+}
+
+.email-settings .help-content li {
+  margin-bottom: 4px;
+  line-height: 1.5;
+}
+
+.email-settings .loading {
+  padding: 32px;
+  text-align: center;
+  color: var(--text-secondary);
+}
