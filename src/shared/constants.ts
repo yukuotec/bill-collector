@@ -76,3 +76,19 @@ export function matchTriageRule(text: string): string | null {
   
   return null;
 }
+
+// ============== Web/Environment Detection ==============
+
+/**
+ * Check if running in web version (without Electron context)
+ * Uses a global flag set by the main process
+ */
+declare global {
+  interface Window {
+    __IS_ELECTRON?: boolean;
+  }
+}
+
+// Check if we're running in Electron (either process.versions.electron is set or window.__IS_ELECTRON is true)
+const isElectron = typeof process !== 'undefined' && process.versions?.electron !== undefined;
+export const isWebVersion = !isElectron;

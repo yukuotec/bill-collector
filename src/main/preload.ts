@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { isWebVersion } from '../shared/constants';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -33,7 +34,18 @@ interface ImportResult {
   columnMapping?: Record<string, string>;
 }
 
-contextBridge.exposeInMainWorld('electronAPI', {
+const webAPI = {
+  // Web simulation API - for development in browser
+  getMembers: () => Promise.resolve([
+    { id: 'demo-1', name: '👨 老公', color: '#3B82F6', created_at: '2024-01-01', updated_at: '2024-01-01' },
+    { id: 'demo-2', name: '👩 老婆', color: '#EC4899', created_at: '2024-01-01', updated_at: '2024-01-01' },
+  ]),
+  addMember: () => Promise.resolve(),
+  updateMember: () => Promise.resolve(),
+  deleteMember: () => Promise.resolve(),
+};
+
+const api = isWebVersion ? webAPI : {
   selectFile: (filters: { name: string; extensions: string[] }[]) => ipcRenderer.invoke('select-file', filters),
   importCSV: (filePath: string, source: ImportSource, options?: ImportOptions): Promise<ImportResult> =>
     ipcRenderer.invoke('import-csv', filePath, source, options),
@@ -68,8 +80,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     previousMonth: string;
   }> => ipcRenderer.invoke('get-monthly-trend', months),
   
-  // Batch Assignment Prompt APIs
+  // Member APIs
   getMembers: (): Promise<Member[]> => ipcRenderer.invoke('get-members'),
+  addMember: (id: string, name: string, color: string): Promise<void> =>
+    ipcRenderer.invoke('add-member', id, name, color),
+  updateMember: (id: string, name: string, color: string): Promise<void> =>
+    ipcRenderer.invoke('update-member', id, name, color),
+  deleteMember: (id: string): Promise<void> =>
+    ipcRenderer.invoke('delete-member', id),
   
   checkSimilarAssignments: (
     transaction: Transaction,
@@ -107,4 +125,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   getCategories: (): Promise<string[]> =>
     ipcRenderer.invoke('get-categories'),
-});
+};
+
+contextBridge.exposeInMainWorld('electronAPI', api);

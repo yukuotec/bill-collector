@@ -14,6 +14,8 @@
     "build:vite": "vite build",
     "build:electron": "tsc -p tsconfig.main.json",
     "test:parsers": "npm run build:electron && node --test tests/parsers.test.js",
+    "test:react": "node --test tests/react.test.js",
+    "test:database": "node --test tests/database.test.js",
     "start": "electron .",
     "dist": "npm run build && electron-builder",
     "test": "node --test tests/*.test.js"
@@ -33,6 +35,9 @@
     "tesseract.js": "^5.1.1"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/jest-dom": "^6.9.1",
+    "@testing-library/react": "^16.3.2",
     "@types/imap": "^0.8.43",
     "@types/mailparser": "^3.4.6",
     "@types/papaparse": "^5.3.15",
@@ -43,6 +48,7 @@
     "cross-env": "^7.0.3",
     "electron": "^33.3.1",
     "electron-builder": "^25.1.8",
+    "jsdom": "^28.1.0",
     "typescript": "^5.7.3",
     "vite": "^6.0.11",
     "vite-plugin-pwa": "^1.2.0"
