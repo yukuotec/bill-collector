@@ -97,4 +97,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   setTransactionMember: (transactionId: string, memberId: string | null): Promise<void> =>
     ipcRenderer.invoke('set-transaction-member', transactionId, memberId),
+
+  // Quick Add APIs
+  createTransaction: (transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>): Promise<{ id: string | null; success: boolean; error?: string }> =>
+    ipcRenderer.invoke('create-transaction', transaction),
+  
+  getMerchantHistory: (limit?: number): Promise<string[]> =>
+    ipcRenderer.invoke('get-merchant-history', limit),
+  
+  getCategories: (): Promise<string[]> =>
+    ipcRenderer.invoke('get-categories'),
 });
