@@ -65,6 +65,14 @@ export default function Import() {
   const [parseStatus, setParseStatus] = useState('');
   const [message, setMessage] = useState('');
   const [previewResult, setPreviewResult] = useState<ImportResult | null>(null);
+  const [isBrowserMode, setIsBrowserMode] = useState(false);
+
+  // Detect browser mode (no file system access)
+  useEffect(() => {
+    // Check if running in browser without Electron API
+    const isElectron = typeof window.electronAPI !== 'undefined' && (window as any).__IS_ELECTRON === true;
+    setIsBrowserMode(!isElectron);
+  }, []);
 
   const canImport = useMemo(
     () => Boolean(filePath) && !importing && !previewLoading && (previewResult?.parsedCount || 0) > 0,
@@ -235,6 +243,23 @@ export default function Import() {
         <p className="page-subtitle">从支付宝、微信、云闪付或银行导入账单</p>
       </div>
 
+      {/* Browser Mode Warning */}
+      {isBrowserMode && (
+        <div className="section-spacing">
+          <div className="card" style={{ border: '2px solid #F59E0B', background: '#FFFBEB' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <span style={{ fontSize: '24px' }}>⚠️</span>
+              <div>
+                <h3 style={{ margin: '0 0 4px 0', color: '#92400E' }}>浏览器模式限制</h3>
+                <p style={{ margin: 0, color: '#92400E' }}>
+                  文件导入功能需要 Electron 桌面应用环境。请运行 <code>npm run dev:electron</code> 或使用已打包的应用程序。
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Source Selection */}
       <div className="section-spacing">
         <div className="card">
@@ -306,25 +331,28 @@ export default function Import() {
       {/* File Drop Zone */}
       <div className="section-spacing">
         <div
-          className={`dropzone ${dragging ? 'dragging' : ''}`}
-          onDragOver={(event) => {
+          className={`dropzone ${dragging ? 'dragging' : ''} ${isBrowserMode ? 'disabled' : ''}`}
+          onDragOver={isBrowserMode ? undefined : (event) => {
             event.preventDefault();
             setDragging(true);
           }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={handleDrop}
+          onDragLeave={isBrowserMode ? undefined : () => setDragging(false)}
+          onDrop={isBrowserMode ? undefined : handleDrop}
+          style={isBrowserMode ? { opacity: 0.5, cursor: 'not-allowed' } : {}}
         >
           <div className="dropzone-icon">📤</div>
-          <p className="dropzone-main">拖拽账单文件到此处</p>
+          <p className="dropzone-main">
+            {isBrowserMode ? '文件导入需要 Electron 环境' : '拖拽账单文件到此处'}
+          </p>
           <p className="dropzone-tip">支持 .csv / .xlsx / .pdf / .html / .png 格式</p>
           <p className="dropzone-current">当前来源：{SOURCE_ICONS[source]} {SOURCE_LABELS[source]}</p>
-          
-          <button 
-            onClick={handleChooseFile} 
-            disabled={importing || previewLoading} 
+
+          <button
+            onClick={handleChooseFile}
+            disabled={importing || previewLoading || isBrowserMode}
             className="btn-primary dropzone-btn"
           >
-            📂 选择文件
+            {isBrowserMode ? '⚠️ 需要 Electron' : '📂 选择文件'}
           </button>
         </div>
       </div>

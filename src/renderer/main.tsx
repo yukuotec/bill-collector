@@ -4,8 +4,10 @@ import App from './App';
 import './styles/index.css';
 
 // Mock API for browser development (when not running in Electron)
-if (typeof window.electronAPI === 'undefined') {
+// Check both electronAPI and __IS_ELECTRON flag to avoid overriding real API
+if (typeof window.electronAPI === 'undefined' && !(window as any).__IS_ELECTRON) {
   console.log('[Dev] Setting up mock electronAPI for browser development');
+  console.log('[Dev] Note: File import/export will not work in browser mode. Use Electron for full features.');
 
   (window as any).electronAPI = {
     // File operations
