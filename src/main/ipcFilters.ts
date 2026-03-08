@@ -44,6 +44,15 @@ export function buildTransactionWhereClause(filters?: TransactionQuery): { where
       params.push(filters.memberId);
     }
   }
+  if (filters?.accountId !== undefined) {
+    if (filters.accountId === '') {
+      // Empty string means unassigned transactions (account_id IS NULL)
+      where.push('account_id IS NULL');
+    } else {
+      where.push('account_id = ?');
+      params.push(filters.accountId);
+    }
+  }
   if (filters?.q) {
     where.push('(description LIKE ? OR counterparty LIKE ? OR notes LIKE ?)');
     const keyword = `%${filters.q}%`;

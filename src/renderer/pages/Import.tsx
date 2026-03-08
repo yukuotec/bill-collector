@@ -1,6 +1,20 @@
-import { DragEvent, useMemo, useState } from 'react';
+import { DragEvent, useEffect, useMemo, useState } from 'react';
+import { Account } from '../../shared/types';
 
 type Source = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
+
+const ACCOUNT_TYPE_LABELS: Record<string, string> = {
+  bank: '银行卡',
+  credit: '信用卡',
+  cash: '现金',
+  alipay: '支付宝',
+  wechat: '微信支付',
+  other: '其他',
+};
+
+function getAccountTypeLabel(type: string): string {
+  return ACCOUNT_TYPE_LABELS[type] || type;
+}
 
 type ImportResult = {
   importId: string | null;
@@ -41,6 +55,8 @@ function getFileExt(filePath: string): string {
 
 export default function Import() {
   const [source, setSource] = useState<Source>('alipay');
+  const [accountId, setAccountId] = useState<string>('');
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [filePath, setFilePath] = useState('');
   const [fileName, setFileName] = useState('');
   const [dragging, setDragging] = useState(false);
@@ -54,6 +70,19 @@ export default function Import() {
     () => Boolean(filePath) && !importing && !previewLoading && (previewResult?.parsedCount || 0) > 0,
     [filePath, importing, previewLoading, previewResult]
   );
+
+  // Load accounts on mount
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const data = await window.electronAPI.getAccounts();
+        setAccounts(data);
+      } catch (error) {
+        console.error('Failed to load accounts:', error);
+      }
+    };
+    loadAccounts();
+  }, []);
 
   const loadPreview = async (nextPath: string, nextSource: Source) => {
     setPreviewLoading(true);
@@ -139,7 +168,7 @@ export default function Import() {
     setImporting(true);
     setMessage('');
     try {
-      const result = await window.electronAPI.importCSV(filePath, source);
+      const result = await window.electronAPI.importCSV(filePath, source, { accountId: accountId || undefined });
       setPreviewResult(result);
       if (result.errors.length > 0) {
         setMessage(`导入失败: ${result.errors.join('; ')}`);
@@ -219,6 +248,47 @@ export default function Import() {
               </button>
             ))}
           </div>
+        </div>
+      </div>
+
+      {/* Account Selection */}
+      <div className="section-spacing">
+        <div className="card">
+          <div className="card-header">
+            <h3 className="card-title">选择账户</h3>
+            <p className="card-subtitle">选择要将账单导入到哪个账户（可选）</p>
+          </div>
+
+          <div className="account-select-row">
+            <select
+              value={accountId}
+              onChange={(e) => setAccountId(e.target.value)}
+              disabled={importing || previewLoading}
+              className="account-select"
+            >
+              <option value="">-- 不指定账户 --</option>
+              {accounts.map((account) => (
+                <option key={account.id} value={account.id}>
+                  {account.name} ({getAccountTypeLabel(account.type)})
+                </option>
+              ))}
+            </select>
+            {accountId && (
+              <button
+                className="btn-secondary btn-sm"
+                onClick={() => setAccountId('')}
+                disabled={importing || previewLoading}
+              >
+                清除
+              </button>
+            )}
+          </div>
+
+          {accounts.length === 0 && (
+            <p className="text-secondary mt-2">
+              还没有创建账户，<a href="#accounts">先去创建账户</a>
+            </p>
+          )}
         </div>
       </div>
 

@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -13,7 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
-import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 
 type Source = TransactionSource;
@@ -722,7 +722,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     return result.filePaths[0];
   });
 
-  ipcMain.handle('import-csv', async (_, filePath: string, source: Source, options?: ImportCsvOptions) => {
+  ipcMain.handle('import-csv', async (_, filePath: string, source: Source, options?: ImportCsvOptions & { accountId?: string }) => {
     const result: ImportCsvResult = {
       importId: null,
       parsedCount: 0,
@@ -802,6 +802,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
           duplicate_source: duplicate.pending?.duplicateSource || null,
           duplicate_type: duplicate.pending?.duplicateType || null,
           merged_with: duplicate.pending?.targetId || null,
+          account_id: options?.accountId || null,
           created_at: now,
           updated_at: now,
         });
@@ -1055,6 +1056,7 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       byCategory,
       topMerchants,
       byMember: getMemberSpendingSummary(targetYear),
+      byAccount: getAccountSpendingSummary(targetYear),
       availableYears: availableYears.length > 0 ? availableYears : [currentYear],
     };
   });
@@ -1366,6 +1368,35 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
 
   ipcMain.handle('get-member-summary', async (_, year: number, month?: number): Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]> => {
     return getMemberSpendingSummary(year, month);
+  });
+
+  // Account handlers
+  ipcMain.handle('get-accounts', async (): Promise<Account[]> => {
+    return getAccounts();
+  });
+
+  ipcMain.handle('add-account', async (_, id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> => {
+    addAccount(id, name, type, balance, color);
+  });
+
+  ipcMain.handle('update-account', async (_, id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> => {
+    updateAccount(id, name, type, balance, color);
+  });
+
+  ipcMain.handle('delete-account', async (_, id: string): Promise<void> => {
+    deleteAccount(id);
+  });
+
+  ipcMain.handle('set-transaction-account', async (_, transactionId: string, accountId: string | null): Promise<void> => {
+    setTransactionAccount(transactionId, accountId);
+  });
+
+  ipcMain.handle('get-account-summary', async (_, year: number, month?: number): Promise<AccountSummary[]> => {
+    return getAccountSpendingSummary(year, month);
+  });
+
+  ipcMain.handle('update-account-balance', async (_, id: string, balance: number): Promise<void> => {
+    updateAccountBalance(id, balance);
   });
 
   // Phase 1: Triage Rules handlers

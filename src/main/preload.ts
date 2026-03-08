@@ -1,5 +1,6 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary } from '../shared/types';
+import { isWebVersion } from '../shared/constants';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -12,6 +13,7 @@ interface CategorySummary {
 interface ImportOptions {
   dryRun?: boolean;
   previewLimit?: number;
+  accountId?: string;
 }
 
 interface ImportResult {
@@ -33,7 +35,30 @@ interface ImportResult {
   columnMapping?: Record<string, string>;
 }
 
-contextBridge.exposeInMainWorld('electronAPI', {
+const webAPI = {
+  // Web simulation API - for development in browser
+  getMembers: () => Promise.resolve([
+    { id: 'demo-1', name: '👨 老公', color: '#3B82F6', created_at: '2024-01-01', updated_at: '2024-01-01' },
+    { id: 'demo-2', name: '👩 老婆', color: '#EC4899', created_at: '2024-01-01', updated_at: '2024-01-01' },
+  ]),
+  addMember: () => Promise.resolve(),
+  updateMember: () => Promise.resolve(),
+  deleteMember: () => Promise.resolve(),
+
+  // Web simulation API for accounts
+  getAccounts: () => Promise.resolve([
+    { id: 'demo-1', name: '招商银行', type: 'bank' as const, balance: 0, color: '#EF4444', created_at: '2024-01-01', updated_at: '2024-01-01' },
+    { id: 'demo-2', name: '支付宝', type: 'alipay' as const, balance: 0, color: '#3B82F6', created_at: '2024-01-01', updated_at: '2024-01-01' },
+  ]),
+  addAccount: () => Promise.resolve(),
+  updateAccount: () => Promise.resolve(),
+  deleteAccount: () => Promise.resolve(),
+  setTransactionAccount: () => Promise.resolve(),
+  getAccountSummary: () => Promise.resolve([]),
+  updateAccountBalance: () => Promise.resolve(),
+};
+
+const api = isWebVersion ? webAPI : {
   selectFile: (filters: { name: string; extensions: string[] }[]) => ipcRenderer.invoke('select-file', filters),
   importCSV: (filePath: string, source: ImportSource, options?: ImportOptions): Promise<ImportResult> =>
     ipcRenderer.invoke('import-csv', filePath, source, options),
@@ -68,8 +93,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
     previousMonth: string;
   }> => ipcRenderer.invoke('get-monthly-trend', months),
   
-  // Batch Assignment Prompt APIs
+  // Member APIs
   getMembers: (): Promise<Member[]> => ipcRenderer.invoke('get-members'),
+  addMember: (id: string, name: string, color: string): Promise<void> =>
+    ipcRenderer.invoke('add-member', id, name, color),
+  updateMember: (id: string, name: string, color: string): Promise<void> =>
+    ipcRenderer.invoke('update-member', id, name, color),
+  deleteMember: (id: string): Promise<void> =>
+    ipcRenderer.invoke('delete-member', id),
   
   checkSimilarAssignments: (
     transaction: Transaction,
@@ -97,4 +128,31 @@ contextBridge.exposeInMainWorld('electronAPI', {
   
   setTransactionMember: (transactionId: string, memberId: string | null): Promise<void> =>
     ipcRenderer.invoke('set-transaction-member', transactionId, memberId),
-});
+
+  // Account APIs
+  getAccounts: (): Promise<Account[]> => ipcRenderer.invoke('get-accounts'),
+  addAccount: (id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> =>
+    ipcRenderer.invoke('add-account', id, name, type, balance, color),
+  updateAccount: (id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> =>
+    ipcRenderer.invoke('update-account', id, name, type, balance, color),
+  deleteAccount: (id: string): Promise<void> =>
+    ipcRenderer.invoke('delete-account', id),
+  setTransactionAccount: (transactionId: string, accountId: string | null): Promise<void> =>
+    ipcRenderer.invoke('set-transaction-account', transactionId, accountId),
+  getAccountSummary: (year: number, month?: number): Promise<AccountSummary[]> =>
+    ipcRenderer.invoke('get-account-summary', year, month),
+  updateAccountBalance: (id: string, balance: number): Promise<void> =>
+    ipcRenderer.invoke('update-account-balance', id, balance),
+
+  // Quick Add APIs
+  createTransaction: (transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>): Promise<{ id: string | null; success: boolean; error?: string }> =>
+    ipcRenderer.invoke('create-transaction', transaction),
+  
+  getMerchantHistory: (limit?: number): Promise<string[]> =>
+    ipcRenderer.invoke('get-merchant-history', limit),
+  
+  getCategories: (): Promise<string[]> =>
+    ipcRenderer.invoke('get-categories'),
+};
+
+contextBridge.exposeInMainWorld('electronAPI', api);

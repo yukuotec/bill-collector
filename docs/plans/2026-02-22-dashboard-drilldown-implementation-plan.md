@@ -1,8 +1,10 @@
-# Dashboard Drill-down Implementation Plan
+# Dashboard Drill-down Implementation Plan ✅ COMPLETED
 
 > **For Claude:** REQUIRED SUB-SKILL: Use superpowers:executing-plans to implement this plan task-by-task.
 
 **Goal:** Add Dashboard-to-Transactions drill-down for category and merchant insights, carrying Dashboard time range and exposing removable drill-down chips in Transactions.
+
+**Status:** ✅ Fully implemented and working as designed.
 
 **Architecture:** Use URL hash/query as the canonical navigation/filter state (`#dashboard?...`, `#transactions?...`). Dashboard click actions navigate with serialized drill params; Transactions parses and applies them into filter state, keeps URL synchronized, and renders removable context chips. Merchant drill-down uses exact `merchant` filtering in IPC query.
 

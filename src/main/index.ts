@@ -24,6 +24,9 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
+  
+  // Set a flag in the renderer that we're in Electron
+  mainWindow.webContents.executeJavaScript(`window.__IS_ELECTRON = true;`);
 
   mainWindow.on('closed', () => {
     mainWindow = null;

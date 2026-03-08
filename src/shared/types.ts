@@ -6,6 +6,26 @@ export interface Member {
   updated_at: string;
 }
 
+export type AccountType = 'bank' | 'credit' | 'cash' | 'alipay' | 'wechat' | 'other';
+
+export interface Account {
+  id: string;
+  name: string;
+  type: AccountType;
+  balance: number;
+  color: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AccountSummary {
+  accountId: string;
+  accountName: string;
+  accountType: AccountType;
+  accountColor: string;
+  total: number;
+}
+
 export interface Transaction {
   id: string;
   source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
@@ -23,6 +43,7 @@ export interface Transaction {
   notes?: string;
   tags?: string;
   member_id?: string | null;
+  account_id?: string | null;
   is_refund?: boolean | number;
   refund_of?: string | null;
   is_duplicate?: boolean | number;
@@ -92,6 +113,7 @@ export interface Summary {
   byCategory: SummaryCategoryItem[];
   topMerchants: SummaryMerchantItem[];
   byMember?: MemberSummaryItem[];
+  byAccount?: AccountSummary[];
   availableYears: number[];
 }
 
@@ -111,6 +133,7 @@ export interface TransactionQuery {
   duplicateType?: DuplicateType;
   refundOnly?: boolean;
   memberId?: string;
+  accountId?: string;
   q?: string;
   page?: number;
   pageSize?: number;
