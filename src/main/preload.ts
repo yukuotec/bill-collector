@@ -1,6 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
 import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary } from '../shared/types';
-import { isWebVersion } from '../shared/constants';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -35,8 +34,54 @@ interface ImportResult {
   columnMapping?: Record<string, string>;
 }
 
+// In preload script, we always have access to Electron APIs
+// The web API fallback is only used when this file is loaded in browser (via main.tsx)
+const isRunningInElectron = typeof process !== 'undefined' && process.versions?.electron !== undefined;
+
 const webAPI = {
   // Web simulation API - for development in browser
+  selectFile: () => Promise.resolve(null),
+  importCSV: (): Promise<ImportResult> => Promise.resolve({
+    importId: null,
+    parsedCount: 0,
+    inserted: 0,
+    exactMerged: 0,
+    fuzzyFlagged: 0,
+    errors: [],
+    preview: [],
+  }),
+  getTransactions: () => Promise.resolve({ items: [], totalCount: 0, page: 1, pageSize: 20 }),
+  getSummary: () => Promise.resolve({
+    year: new Date().getFullYear(),
+    currentMonth: '2024-01',
+    currentMonthExpense: 0,
+    currentMonthIncome: 0,
+    yearlyExpense: 0,
+    yearlyIncome: 0,
+    yearlyNet: 0,
+    monthly: [],
+    byCategory: [],
+    topMerchants: [],
+    availableYears: [2024],
+  }),
+  getCategorySummary: () => Promise.resolve([]),
+  getDuplicateTransactions: () => Promise.resolve([]),
+  resolveDuplicate: () => Promise.resolve(true),
+  updateCategory: () => Promise.resolve(true),
+  updateNotes: () => Promise.resolve(true),
+  deleteTransaction: () => Promise.resolve(true),
+  deleteTransactionsByIds: () => Promise.resolve({ deleted: 0 }),
+  exportCSV: () => Promise.resolve(null),
+  exportExcel: () => Promise.resolve(null),
+  backupDatabase: () => Promise.resolve(null),
+  getBudgets: () => Promise.resolve([]),
+  setBudget: () => Promise.resolve(true),
+  deleteBudget: () => Promise.resolve(true),
+  getBudgetAlerts: () => Promise.resolve([]),
+  getTags: () => Promise.resolve([]),
+  addTag: () => Promise.resolve(true),
+  removeTag: () => Promise.resolve(true),
+  getMonthlyTrend: () => Promise.resolve({ data: [], currentMonth: '', previousMonth: '' }),
   getMembers: () => Promise.resolve([
     { id: 'demo-1', name: '👨 老公', color: '#3B82F6', created_at: '2024-01-01', updated_at: '2024-01-01' },
     { id: 'demo-2', name: '👩 老婆', color: '#EC4899', created_at: '2024-01-01', updated_at: '2024-01-01' },
@@ -44,7 +89,10 @@ const webAPI = {
   addMember: () => Promise.resolve(),
   updateMember: () => Promise.resolve(),
   deleteMember: () => Promise.resolve(),
-
+  checkSimilarAssignments: () => Promise.resolve({ similarCount: 0, shouldPrompt: false, similarTransactions: [], memberId: '', memberName: '' }),
+  batchAssignSimilar: () => Promise.resolve(0),
+  setTransactionMember: () => Promise.resolve(),
+  getMemberSummary: () => Promise.resolve([]),
   // Web simulation API for accounts
   getAccounts: () => Promise.resolve([
     { id: 'demo-1', name: '招商银行', type: 'bank' as const, balance: 0, color: '#EF4444', created_at: '2024-01-01', updated_at: '2024-01-01' },
@@ -56,9 +104,13 @@ const webAPI = {
   setTransactionAccount: () => Promise.resolve(),
   getAccountSummary: () => Promise.resolve([]),
   updateAccountBalance: () => Promise.resolve(),
+  // Quick Add APIs
+  createTransaction: () => Promise.resolve({ id: null, success: false, error: 'Browser mode' }),
+  getMerchantHistory: () => Promise.resolve([]),
+  getCategories: () => Promise.resolve(['餐饮', '交通', '购物', '住房', '医疗', '娱乐', '通讯', '其他']),
 };
 
-const api = isWebVersion ? webAPI : {
+const electronAPI = {
   selectFile: (filters: { name: string; extensions: string[] }[]) => ipcRenderer.invoke('select-file', filters),
   importCSV: (filePath: string, source: ImportSource, options?: ImportOptions): Promise<ImportResult> =>
     ipcRenderer.invoke('import-csv', filePath, source, options),
@@ -129,6 +181,9 @@ const api = isWebVersion ? webAPI : {
   setTransactionMember: (transactionId: string, memberId: string | null): Promise<void> =>
     ipcRenderer.invoke('set-transaction-member', transactionId, memberId),
 
+  getMemberSummary: (year: number, month?: number): Promise<Array<{ memberId: string; memberName: string; memberColor: string; total: number }>> =>
+    ipcRenderer.invoke('get-member-summary', year, month),
+
   // Account APIs
   getAccounts: (): Promise<Account[]> => ipcRenderer.invoke('get-accounts'),
   addAccount: (id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> =>
@@ -147,12 +202,17 @@ const api = isWebVersion ? webAPI : {
   // Quick Add APIs
   createTransaction: (transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>): Promise<{ id: string | null; success: boolean; error?: string }> =>
     ipcRenderer.invoke('create-transaction', transaction),
-  
+
   getMerchantHistory: (limit?: number): Promise<string[]> =>
     ipcRenderer.invoke('get-merchant-history', limit),
-  
+
   getCategories: (): Promise<string[]> =>
     ipcRenderer.invoke('get-categories'),
 };
+
+// Export the appropriate API based on environment
+// In Electron preload script, use real IPC APIs
+// In browser (when this file is loaded via main.tsx mock), use web APIs
+const api = isRunningInElectron ? electronAPI : webAPI;
 
 contextBridge.exposeInMainWorld('electronAPI', api);

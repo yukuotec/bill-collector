@@ -18,6 +18,7 @@ interface SimilarAssignmentResult {
 
 export default function AssignTransactions() {
   const [unassignedTransactions, setUnassignedTransactions] = useState<Transaction[]>([]);
+  const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [draggingId, setDraggingId] = useState<string | null>(null);
@@ -25,18 +26,32 @@ export default function AssignTransactions() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [promptData, setPromptData] = useState<SimilarAssignmentResult | null>(null);
 
+  // Date range filter
+  const today = new Date();
+  const firstDayOfMonth = new Date(today.getFullYear(), today.getMonth(), 1);
+  const [startDate, setStartDate] = useState(firstDayOfMonth.toISOString().split('T')[0]);
+  const [endDate, setEndDate] = useState(today.toISOString().split('T')[0]);
+
+  // Search and multi-select
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [showBatchActions, setShowBatchActions] = useState(false);
+
   // Fetch unassigned transactions
   const fetchUnassignedTransactions = useCallback(async () => {
     try {
       const query: TransactionQuery = {
         memberId: '', // Empty string means unassigned
+        startDate: startDate,
+        endDate: endDate,
       };
       const result = await window.electronAPI.getTransactions(query);
       setUnassignedTransactions(result.items);
+      setFilteredTransactions(result.items);
     } catch (error) {
       console.error('Failed to fetch unassigned transactions:', error);
     }
-  }, []);
+  }, [startDate, endDate]);
 
   // Fetch members
   const fetchMembers = useCallback(async () => {
@@ -76,6 +91,84 @@ export default function AssignTransactions() {
     loadData();
   }, [fetchUnassignedTransactions, fetchMembers, fetchMemberSummary]);
 
+  // Search filter effect
+  useEffect(() => {
+    if (!searchQuery.trim()) {
+      setFilteredTransactions(unassignedTransactions);
+    } else {
+      const query = searchQuery.toLowerCase();
+      const filtered = unassignedTransactions.filter(t =>
+        (t.counterparty?.toLowerCase().includes(query) || false) ||
+        (t.description?.toLowerCase().includes(query) || false) ||
+        (t.category?.toLowerCase().includes(query) || false)
+      );
+      setFilteredTransactions(filtered);
+    }
+  }, [searchQuery, unassignedTransactions]);
+
+  // Toggle transaction selection
+  const toggleSelection = (id: string) => {
+    setSelectedIds(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Select all visible transactions
+  const selectAllVisible = () => {
+    setSelectedIds(new Set(filteredTransactions.map(t => t.id)));
+  };
+
+  // Clear selection
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+  };
+
+  // Batch assign selected transactions to a member
+  const batchAssignSelected = async (memberId: string) => {
+    if (selectedIds.size === 0) return;
+
+    const idsToAssign = Array.from(selectedIds);
+    let successCount = 0;
+    let totalAmount = 0;
+
+    for (const transactionId of idsToAssign) {
+      const transaction = unassignedTransactions.find(t => t.id === transactionId);
+      if (transaction) {
+        try {
+          await window.electronAPI.setTransactionMember(transactionId, memberId);
+          successCount++;
+          totalAmount += transaction.amount;
+        } catch (error) {
+          console.error('[Assign] Failed to assign transaction:', transactionId, error);
+        }
+      }
+    }
+
+    // Update local state
+    setUnassignedTransactions(prev => prev.filter(t => !selectedIds.has(t.id)));
+    setFilteredTransactions(prev => prev.filter(t => !selectedIds.has(t.id)));
+
+    // Update member summary locally for immediate feedback
+    setMemberSummary(prev => ({
+      ...prev,
+      [memberId]: {
+        total: (prev[memberId]?.total || 0) + totalAmount,
+        count: (prev[memberId]?.count || 0) + successCount,
+      }
+    }));
+
+    setSelectedIds(new Set());
+
+    // Refresh from server
+    setTimeout(() => handleRefresh(), 100);
+  };
+
   // Refresh data
   const handleRefresh = async () => {
     setLoading(true);
@@ -114,6 +207,19 @@ export default function AssignTransactions() {
       // Assign transaction to member
       await window.electronAPI.setTransactionMember(transactionId, memberId);
 
+      // Immediately remove from local state for better UX
+      setUnassignedTransactions(prev => prev.filter(t => t.id !== transactionId));
+      setFilteredTransactions(prev => prev.filter(t => t.id !== transactionId));
+
+      // Update member summary locally for immediate feedback
+      setMemberSummary(prev => ({
+        ...prev,
+        [memberId]: {
+          total: (prev[memberId]?.total || 0) + (transaction.amount || 0),
+          count: (prev[memberId]?.count || 0) + 1,
+        }
+      }));
+
       // Check similar assignments
       const result: SimilarAssignmentResult = await window.electronAPI.checkSimilarAssignments(
         transaction,
@@ -126,10 +232,14 @@ export default function AssignTransactions() {
         setShowPrompt(true);
       }
 
-      // Refresh data
-      await handleRefresh();
+      // Refresh data after a short delay to ensure DB is saved
+      setTimeout(async () => {
+        await handleRefresh();
+      }, 100);
     } catch (error) {
       console.error('Failed to assign transaction:', error);
+      // Restore the transaction if failed
+      await fetchUnassignedTransactions();
     }
 
     setDraggingId(null);
@@ -211,39 +321,130 @@ export default function AssignTransactions() {
         </div>
       </div>
 
+      {/* Date Range Filter & Search */}
+      <div className="assign-filters card">
+        <div className="filter-row">
+          <label>日期范围：</label>
+          <input
+            type="date"
+            value={startDate}
+            onChange={(e) => setStartDate(e.target.value)}
+            className="date-input"
+          />
+          <span className="separator">至</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={(e) => setEndDate(e.target.value)}
+            className="date-input"
+          />
+          <button className="btn btn-primary btn-sm" onClick={handleRefresh}>
+            应用筛选
+          </button>
+        </div>
+        <div className="filter-row" style={{ marginTop: '12px' }}>
+          <label>搜索：</label>
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索商户、描述或分类..."
+            className="search-input"
+            style={{ flex: 1, maxWidth: '400px' }}
+          />
+          <span className="text-secondary">{filteredTransactions.length} 笔交易</span>
+        </div>
+      </div>
+
+      {/* Batch Actions */}
+      {selectedIds.size > 0 && (
+        <div className="batch-actions card">
+          <div className="batch-info">
+            已选择 <strong>{selectedIds.size}</strong> 笔交易
+            {(() => {
+              const total = unassignedTransactions
+                .filter(t => selectedIds.has(t.id))
+                .reduce((sum, t) => sum + (t.amount || 0), 0);
+              return ` (${formatCurrency(total)})`;
+            })()}
+          </div>
+          <div className="batch-buttons">
+            <button className="btn btn-secondary btn-sm" onClick={clearSelection}>
+              清除选择
+            </button>
+            {members.map(member => (
+              <button
+                key={member.id}
+                className="btn btn-primary btn-sm"
+                style={{ backgroundColor: member.color, borderColor: member.color }}
+                onClick={() => batchAssignSelected(member.id)}
+              >
+                分配给 {member.name}
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Unassigned Transactions List */}
       <div className="assign-content">
         <div className="unassigned-list">
-          {unassignedTransactions.length === 0 ? (
+          {filteredTransactions.length === 0 ? (
             <div className="empty-state">
               <div className="empty-icon">✓</div>
-              <p>所有交易已分配完毕！</p>
+              <p>{searchQuery ? '没有匹配的交易' : '所有交易已分配完毕！'}</p>
             </div>
           ) : (
-            <div className="transaction-cards">
-              {unassignedTransactions.map((transaction) => (
-                <div
-                  key={transaction.id}
-                  className={`transaction-card ${draggingId === transaction.id ? 'dragging' : ''}`}
-                  draggable
-                  onDragStart={(e) => handleDragStart(e, transaction)}
-                  onDragEnd={handleDragEnd}
-                >
-                  <div className="transaction-card-header">
-                    <span className="transaction-amount">{formatCurrency(transaction.amount)}</span>
-                    <span className="transaction-category">{transaction.category || '未分类'}</span>
+            <>
+              <div className="selection-actions">
+                <label className="checkbox-label">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.size === filteredTransactions.length && filteredTransactions.length > 0}
+                    onChange={(e) => e.target.checked ? selectAllVisible() : clearSelection()}
+                  />
+                  全选
+                </label>
+                {selectedIds.size > 0 && (
+                  <button className="btn btn-link btn-sm" onClick={clearSelection}>
+                    清除选择 ({selectedIds.size})
+                  </button>
+                )}
+              </div>
+              <div className="transaction-cards">
+                {filteredTransactions.map((transaction) => (
+                  <div
+                    key={transaction.id}
+                    className={`transaction-card ${draggingId === transaction.id ? 'dragging' : ''} ${selectedIds.has(transaction.id) ? 'selected' : ''}`}
+                    draggable
+                    onDragStart={(e) => handleDragStart(e, transaction)}
+                    onDragEnd={handleDragEnd}
+                    onClick={() => toggleSelection(transaction.id)}
+                  >
+                    <div className="transaction-card-header">
+                      <div className="transaction-header-left">
+                        <input
+                          type="checkbox"
+                          checked={selectedIds.has(transaction.id)}
+                          onChange={() => toggleSelection(transaction.id)}
+                          onClick={(e) => e.stopPropagation()}
+                        />
+                        <span className="transaction-amount">{formatCurrency(transaction.amount)}</span>
+                      </div>
+                      <span className="transaction-category">{transaction.category || '未分类'}</span>
+                    </div>
+                    <div className="transaction-card-body">
+                      <span className="transaction-merchant">
+                        {transaction.counterparty || transaction.description || '无商户'}
+                      </span>
+                    </div>
+                    <div className="transaction-card-footer">
+                      <span className="transaction-date">{formatDate(transaction.date)}</span>
+                    </div>
                   </div>
-                  <div className="transaction-card-body">
-                    <span className="transaction-merchant">
-                      {transaction.counterparty || transaction.description || '无商户'}
-                    </span>
-                  </div>
-                  <div className="transaction-card-footer">
-                    <span className="transaction-date">{formatDate(transaction.date)}</span>
-                  </div>
-                </div>
-              ))}
-            </div>
+                ))}
+              </div>
+            </>
           )}
         </div>
 
@@ -252,9 +453,10 @@ export default function AssignTransactions() {
           {members.map((member) => (
             <div
               key={member.id}
-              className={`member-box ${draggingId ? 'droppable' : ''}`}
+              className={`member-box ${draggingId ? 'droppable' : ''} ${selectedIds.size > 0 ? 'clickable' : ''}`}
               onDragOver={handleDragOver}
               onDrop={(e) => handleDrop(e, member.id)}
+              onClick={() => selectedIds.size > 0 && batchAssignSelected(member.id)}
               style={{ borderColor: member.color }}
             >
               <div className="member-box-header">
@@ -269,6 +471,9 @@ export default function AssignTransactions() {
                   ({memberSummary[member.id]?.count || 0}笔)
                 </div>
               </div>
+              {selectedIds.size > 0 && (
+                <div className="member-box-hint">点击分配</div>
+              )}
             </div>
           ))}
           {members.length === 0 && (

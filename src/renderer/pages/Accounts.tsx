@@ -61,7 +61,9 @@ export default function Accounts({ locationSearch }: AccountsProps) {
   }, []);
 
   const handleAddAccount = async () => {
-    if (!newName.trim()) return;
+    if (!newName.trim()) {
+      return;
+    }
 
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
     const balance = parseFloat(newBalance) || 0;
@@ -140,7 +142,14 @@ export default function Accounts({ locationSearch }: AccountsProps) {
       </div>
 
       <div className="accounts-toolbar">
-        <button className="btn-primary" onClick={() => { setShowAddForm(true); cancelEdit(); }}>
+        <button className="btn-primary" onClick={() => {
+          setEditingAccount(null);
+          setNewName('');
+          setNewType('bank');
+          setNewBalance('');
+          setNewColor(ACCOUNT_COLORS[0]);
+          setShowAddForm(true);
+        }}>
           + 添加账户
         </button>
       </div>

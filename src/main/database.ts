@@ -601,11 +601,13 @@ export function deleteMember(id: string): void {
 export function setTransactionMember(transactionId: string, memberId: string | null): void {
   const database = getDatabase();
   const now = new Date().toISOString();
+
   if (memberId === null) {
     database.run('UPDATE transactions SET member_id = NULL, updated_at = ? WHERE id = ?', [now, transactionId]);
   } else {
     database.run('UPDATE transactions SET member_id = ?, updated_at = ? WHERE id = ?', [memberId, now, transactionId]);
   }
+
   saveDatabase();
 }
 

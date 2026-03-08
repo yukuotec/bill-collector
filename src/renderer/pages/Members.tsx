@@ -95,7 +95,12 @@ export default function Members({ locationSearch }: MembersProps) {
       </div>
 
       <div className="members-toolbar">
-        <button className="btn-primary" onClick={() => { setShowAddForm(true); cancelEdit(); }}>
+        <button className="btn-primary" onClick={() => {
+          setEditingMember(null);
+          setNewName('');
+          setNewColor(MEMBER_COLORS[0]);
+          setShowAddForm(true);
+        }}>
           + 添加成员
         </button>
       </div>
