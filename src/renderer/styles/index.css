@@ -658,6 +658,48 @@ select {
   padding: 16px 20px;
 }
 
+/* Account Selection in Import */
+.account-select-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.account-select {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.account-select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.account-select:disabled {
+  background: var(--bg-hover);
+  cursor: not-allowed;
+}
+
+.btn-sm {
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.text-secondary {
+  color: var(--text-secondary);
+}
+
+.mt-2 {
+  margin-top: 8px;
+}
+
 /* ============================================
    Messages & Alerts
    ============================================ */
@@ -1390,6 +1432,22 @@ select {
 }
 
 .member-select:hover {
+  border-color: var(--primary);
+}
+
+/* Account Select in Transactions Table */
+.account-select-cell {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  cursor: pointer;
+  min-width: 100px;
+}
+
+.account-select-cell:hover {
   border-color: var(--primary);
 }
 
@@ -2286,4 +2344,337 @@ select {
   .quick-add .form-actions {
     flex-direction: column;
   }
+}
+
+/* ============================================
+   Accounts Page
+   ============================================ */
+.accounts-page {
+  padding: 24px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.accounts-page .page-header {
+  margin-bottom: 24px;
+}
+
+.accounts-page .page-header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin: 0 0 8px 0;
+}
+
+.accounts-page .page-subtitle {
+  color: var(--text-secondary);
+  font-size: 14px;
+  margin: 0;
+}
+
+.accounts-toolbar {
+  margin-bottom: 24px;
+}
+
+.account-form {
+  margin-bottom: 24px;
+  padding: 20px;
+}
+
+.account-form h3 {
+  margin: 0 0 20px 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.form-row {
+  margin-bottom: 16px;
+}
+
+.form-row label {
+  display: block;
+  font-size: 14px;
+  font-weight: 500;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+}
+
+.form-row input,
+.form-row select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+  transition: var(--transition);
+}
+
+.form-row input:focus,
+.form-row select:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+.form-row select {
+  cursor: pointer;
+}
+
+.color-picker {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.color-option {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.color-option:hover {
+  transform: scale(1.1);
+}
+
+.color-option.selected {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px white, 0 0 0 4px var(--text-primary);
+}
+
+.form-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.form-actions button {
+  padding: 10px 20px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.form-actions .btn-secondary {
+  background: var(--bg-main);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.form-actions .btn-secondary:hover {
+  background: var(--bg-hover);
+}
+
+.form-actions .btn-primary {
+  background: var(--primary);
+  color: white;
+  border: none;
+}
+
+.form-actions .btn-primary:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.form-actions .btn-primary:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Accounts List */
+.accounts-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+  gap: 16px;
+}
+
+.account-card {
+  padding: 20px;
+  position: relative;
+  transition: var(--transition);
+}
+
+.account-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.account-header {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.account-color-indicator {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+
+.account-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.account-name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.account-icon {
+  font-size: 20px;
+}
+
+.account-name {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.account-type-badge {
+  font-size: 12px;
+  padding: 2px 8px;
+  background: var(--bg-hover);
+  color: var(--text-secondary);
+  border-radius: 12px;
+}
+
+.account-actions {
+  display: flex;
+  gap: 4px;
+}
+
+.btn-icon {
+  padding: 6px;
+  background: transparent;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 16px;
+  transition: var(--transition);
+}
+
+.btn-icon:hover {
+  background: var(--bg-hover);
+}
+
+.btn-icon.btn-danger:hover {
+  background: var(--danger-light);
+}
+
+.account-balance-section {
+  padding-top: 16px;
+  border-top: 1px solid var(--border-light);
+}
+
+.balance-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-bottom: 4px;
+}
+
+.account-balance {
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--text-primary);
+  cursor: pointer;
+  padding: 4px 0;
+  transition: var(--transition);
+}
+
+.account-balance:hover {
+  color: var(--primary);
+}
+
+.balance-edit input {
+  width: 100%;
+  padding: 8px 12px;
+  border: 2px solid var(--primary);
+  border-radius: 8px;
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.balance-edit input:focus {
+  outline: none;
+}
+
+.delete-confirm {
+  margin-top: 16px;
+  padding: 16px;
+  background: var(--danger-light);
+  border-radius: 8px;
+}
+
+.delete-confirm p {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  color: var(--danger);
+}
+
+.delete-warning {
+  font-size: 12px;
+  opacity: 0.8;
+}
+
+.confirm-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.confirm-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: var(--transition);
+}
+
+.confirm-actions .btn-secondary {
+  background: white;
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+}
+
+.confirm-actions .btn-danger {
+  background: var(--danger);
+  color: white;
+  border: none;
+}
+
+.confirm-actions .btn-danger:hover {
+  background: #dc2626;
+}
+
+.empty-state {
+  text-align: center;
+  padding: 60px 20px;
+  color: var(--text-secondary);
+  grid-column: 1 / -1;
+}
+
+.empty-icon {
+  font-size: 48px;
+  margin-bottom: 16px;
+}
+
+.empty-state p {
+  margin: 0 0 8px 0;
+  font-size: 16px;
+}
+
+.empty-subtitle {
+  font-size: 14px;
+  opacity: 0.7;
 }

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CATEGORIES } from '../../shared/constants';
-import { DuplicateReviewItem, Member, SortOrder, Transaction, TransactionQuery, TransactionSortBy } from '../../shared/types';
+import { DuplicateReviewItem, Member, Account, SortOrder, Transaction, TransactionQuery, TransactionSortBy } from '../../shared/types';
 import { parseDrilldownQuery, removeDrilldownField, shouldApplyLatestResponse } from '../../shared/drilldown';
 
 interface FilterState {
@@ -11,6 +11,7 @@ interface FilterState {
   source: string;
   type: string;
   memberId: string;
+  accountId: string;
   q: string;
 }
 
@@ -136,6 +137,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateReviewItem[]>([]);
   const [members, setMembers] = useState<Member[]>([]);
+  const [accounts, setAccounts] = useState<Account[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -164,6 +166,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
     source: '',
     type: '',
     memberId: '',
+    accountId: '',
     q: '',
   });
   const drillQuery = useMemo(() => parseDrilldownQuery(locationSearch), [locationSearch]);
@@ -183,6 +186,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         source: (filter.source || undefined) as TransactionQuery['source'],
         type: (filter.type || undefined) as TransactionQuery['type'],
         memberId: filter.memberId || undefined,
+        accountId: filter.accountId || undefined,
         q: filter.q || undefined,
         page,
         pageSize,
@@ -231,6 +235,18 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
       }
     };
     loadMembers();
+  }, []);
+
+  useEffect(() => {
+    const loadAccounts = async () => {
+      try {
+        const data = await window.electronAPI.getAccounts();
+        setAccounts(data);
+      } catch (error) {
+        console.error('Failed to load accounts:', error);
+      }
+    };
+    loadAccounts();
   }, []);
 
   useEffect(() => {
@@ -391,6 +407,11 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const handleBatchAssignCancel = async () => {
     // Just clear the pending state, the transaction is already assigned
     setPendingMemberAssignment(null);
+    await loadTransactions();
+  };
+
+  const handleAccountAssignment = async (transactionId: string, accountId: string | null) => {
+    await window.electronAPI.setTransactionAccount(transactionId, accountId);
     await loadTransactions();
   };
 
@@ -576,6 +597,15 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           ))}
         </select>
 
+        <select value={filter.accountId} onChange={(e) => updateFilter({ accountId: e.target.value })}>
+          <option value="">所有账户</option>
+          {accounts.map((account) => (
+            <option key={account.id} value={account.id}>
+              {account.name}
+            </option>
+          ))}
+        </select>
+
         <select value={filter.source} onChange={(e) => updateFilter({ source: e.target.value })}>
           <option value="">所有来源</option>
           <option value="alipay">支付宝</option>
@@ -593,7 +623,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         <button
           className="btn-secondary"
           onClick={() => {
-            setFilter({ startDate: '', endDate: '', category: '', merchant: '', source: '', type: '', memberId: '', q: '' });
+            setFilter({ startDate: '', endDate: '', category: '', merchant: '', source: '', type: '', memberId: '', accountId: '', q: '' });
             setPage(1);
             setSortBy('date');
             setSortOrder('desc');
@@ -698,6 +728,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
               <th>标签</th>
               <th>分类</th>
               <th>成员</th>
+              <th>账户</th>
               <th>来源</th>
               <th>退款关联</th>
               <th>去重</th>
@@ -707,7 +738,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
           <tbody>
             {transactions.length === 0 && (
               <tr>
-                <td colSpan={14}>暂无数据</td>
+                <td colSpan={15}>暂无数据</td>
               </tr>
             )}
             {transactions.map((txn) => {
@@ -802,6 +833,20 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
                     {members.map((member) => (
                       <option key={member.id} value={member.id}>
                         {member.name}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td>
+                  <select
+                    value={txn.account_id || ''}
+                    onChange={(e) => handleAccountAssignment(txn.id, e.target.value || null)}
+                    className="account-select-cell"
+                  >
+                    <option value="">-</option>
+                    {accounts.map((account) => (
+                      <option key={account.id} value={account.id}>
+                        {account.name}
                       </option>
                     ))}
                   </select>

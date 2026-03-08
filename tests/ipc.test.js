@@ -126,6 +126,10 @@ test('Member CRUD via IPC', async () => {
   console.log('Member CRUD IPC tests skipped - need database with members');
 });
 
+test('Account CRUD via IPC', async () => {
+  console.log('Account CRUD IPC tests skipped - need database with accounts');
+});
+
 test('Budget CRUD via IPC', async () => {
   console.log('Budget CRUD IPC tests skipped - need database with budgets');
 });

@@ -54,6 +54,14 @@ test('Database functions exist', () => {
   assert.ok(typeof db.saveEmailMessage === 'function', 'saveEmailMessage exists');
   assert.ok(typeof db.markEmailAsProcessed === 'function', 'markEmailAsProcessed exists');
   assert.ok(typeof db.getUnprocessedEmails === 'function', 'getUnprocessedEmails exists');
+  // Account functions
+  assert.ok(typeof db.getAccounts === 'function', 'getAccounts exists');
+  assert.ok(typeof db.addAccount === 'function', 'addAccount exists');
+  assert.ok(typeof db.updateAccount === 'function', 'updateAccount exists');
+  assert.ok(typeof db.deleteAccount === 'function', 'deleteAccount exists');
+  assert.ok(typeof db.setTransactionAccount === 'function', 'setTransactionAccount exists');
+  assert.ok(typeof db.getAccountSpendingSummary === 'function', 'getAccountSpendingSummary exists');
+  assert.ok(typeof db.updateAccountBalance === 'function', 'updateAccountBalance exists');
 });
 
 test('initDatabase function exists', () => {

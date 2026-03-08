@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, EmailAccount, EmailMessage } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
 import Transactions from './pages/Transactions';
 import Budgets from './pages/Budgets';
 import Members from './pages/Members';
+import Accounts from './pages/Accounts';
 import AssignTransactions from './pages/AssignTransactions';
 import EmailSettings from './pages/EmailSettings';
 import QuickAdd from './pages/QuickAdd';
@@ -17,7 +18,7 @@ declare global {
       importCSV: (
         filePath: string,
         source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank',
-        options?: { dryRun?: boolean; previewLimit?: number }
+        options?: { dryRun?: boolean; previewLimit?: number; accountId?: string }
       ) => Promise<{
         importId: string | null;
         parsedCount: number;
@@ -76,7 +77,15 @@ declare global {
         }>;
       }>;
       batchAssignSimilar: (transaction: Transaction, memberId: string) => Promise<number>;
-      getEmailAccounts: () => Promise<EmailAccount[]>;
+      // Account APIs
+      getAccounts: () => Promise<Account[]>;
+      addAccount: (id: string, name: string, type: Account['type'], balance: number, color: string) => Promise<void>;
+      updateAccount: (id: string, name: string, type: Account['type'], balance: number, color: string) => Promise<void>;
+      deleteAccount: (id: string) => Promise<void>;
+      setTransactionAccount: (transactionId: string, accountId: string | null) => Promise<void>;
+      getAccountSummary: (year: number, month?: number) => Promise<AccountSummary[]>;
+      updateAccountBalance: (id: string, balance: number) => Promise<void>;
+      // Email APIs
       addEmailAccount: (
         id: string,
         email: string,
@@ -107,6 +116,7 @@ const navItems = [
   { page: 'quick-add', label: '快速记账', icon: '➕', highlight: true },
   { page: 'dashboard', label: '仪表盘', icon: '📊' },
   { page: 'budgets', label: '预算', icon: '💵' },
+  { page: 'accounts', label: '账户', icon: '💳' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
   { page: 'assign', label: '分配交易', icon: '📤' },
   { page: 'import', label: '导入', icon: '📥' },
@@ -163,6 +173,7 @@ export default function App() {
           />
         )}
         {currentPage === 'budgets' && <Budgets />}
+        {currentPage === 'accounts' && <Accounts locationSearch={locationState.search} />}
         {currentPage === 'members' && <Members locationSearch={locationState.search} />}
         {currentPage === 'import' && <Import />}
         {currentPage === 'transactions' && (

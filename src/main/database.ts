@@ -1,12 +1,25 @@
 import initSqlJs from 'sql.js';
 import path from 'path';
 import fs from 'fs';
-import { app } from 'electron';
-import { Budget, Member, Transaction, AssignmentHistory, AssignmentPattern, SmartAssignmentResult, EmailAccount, EmailMessage } from '../shared/types';
+import type { App } from 'electron';
+import { Budget, Member, Transaction, AssignmentHistory, AssignmentPattern, SmartAssignmentResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { TRIAGE_RULES, matchTriageRule } from '../shared/constants';
 
 let db: any = null;
 let dbPath: string = '';
+let electronApp: App | null = null;
+
+function getElectronApp(): App | null {
+  if (electronApp) return electronApp;
+  try {
+    const { app } = require('electron');
+    electronApp = app;
+    return app;
+  } catch {
+    // Electron not available (e.g., in tests)
+    return null;
+  }
+}
 
 export function getDatabasePath(): string {
   if (!dbPath) {
@@ -120,6 +133,7 @@ function ensureSchema(): void {
   ensureColumn('tags', 'TEXT');
   ensureColumn('currency', 'TEXT DEFAULT "CNY"');
   ensureColumn('member_id', 'TEXT');
+  ensureColumn('account_id', 'TEXT');
 
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
@@ -190,6 +204,21 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_email_messages_message_id ON email_messages(message_id)');
   database.run('CREATE INDEX IF NOT EXISTS idx_email_messages_processed ON email_messages(processed)');
 
+  // Accounts table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      balance REAL DEFAULT 0,
+      color TEXT DEFAULT '#3B82F6',
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id)');
+
   const now = new Date().toISOString();
   database.run(
     `
@@ -215,8 +244,14 @@ function ensureSchema(): void {
 }
 
 export async function initDatabase(): Promise<void> {
-  const userDataPath = app.getPath('userData');
-  dbPath = path.join(userDataPath, 'expenses.db');
+  // Allow overriding database path via environment variable (for tests)
+  const userDataPath = process.env.EXPENSE_DB_PATH
+    ? path.dirname(process.env.EXPENSE_DB_PATH)
+    : getElectronApp()?.getPath('userData') || process.cwd();
+  const dbFileName = process.env.EXPENSE_DB_PATH
+    ? path.basename(process.env.EXPENSE_DB_PATH)
+    : 'expenses.db';
+  dbPath = path.join(userDataPath, dbFileName);
 
   const SQL = await initSqlJs();
 
@@ -239,8 +274,8 @@ export function insertTransactions(transactions: Transaction[]): number {
   const database = getDatabase();
   const stmt = database.prepare(
     `INSERT INTO transactions
-      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, bank_name, category, notes, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type, merged_with, tags, currency, created_at, updated_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      (id, source, import_id, original_source, original_id, date, amount, type, counterparty, description, bank_name, category, notes, is_refund, refund_of, is_duplicate, duplicate_source, duplicate_type, merged_with, tags, currency, member_id, account_id, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
   );
 
   let inserted = 0;
@@ -268,6 +303,8 @@ export function insertTransactions(transactions: Transaction[]): number {
         txn.merged_with ?? null,
         txn.tags ?? null,
         txn.currency ?? 'CNY',
+        txn.member_id ?? null,
+        txn.account_id ?? null,
         txn.created_at,
         txn.updated_at,
       ]);
@@ -1313,4 +1350,114 @@ export function getEmailMessages(accountId: string, limit = 50): EmailMessage[] 
   }
   stmt.free();
   return results;
+}
+
+// ============== Account Functions ==============
+
+export function getAccounts(): Account[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM accounts ORDER BY name ASC');
+  const results: Account[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as Account);
+  }
+  stmt.free();
+  return results;
+}
+
+export function addAccount(id: string, name: string, type: Account['type'], balance: number, color: string): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'INSERT INTO accounts (id, name, type, balance, color, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)',
+    [id, name, type, balance || 0, color || '#3B82F6', now, now]
+  );
+  saveDatabase();
+}
+
+export function updateAccount(id: string, name: string, type: Account['type'], balance: number, color: string): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'UPDATE accounts SET name = ?, type = ?, balance = ?, color = ?, updated_at = ? WHERE id = ?',
+    [name, type, balance || 0, color || '#3B82F6', now, id]
+  );
+  saveDatabase();
+}
+
+export function deleteAccount(id: string): void {
+  const database = getDatabase();
+  // First, update transactions to remove account_id reference
+  database.run('UPDATE transactions SET account_id = NULL WHERE account_id = ?', [id]);
+  // Then delete the account
+  database.run('DELETE FROM accounts WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function setTransactionAccount(transactionId: string, accountId: string | null): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  if (accountId === null) {
+    database.run('UPDATE transactions SET account_id = NULL, updated_at = ? WHERE id = ?', [now, transactionId]);
+  } else {
+    database.run('UPDATE transactions SET account_id = ?, updated_at = ? WHERE id = ?', [accountId, now, transactionId]);
+  }
+  saveDatabase();
+}
+
+export function getAccountSpendingSummary(year: number, month?: number): AccountSummary[] {
+  const database = getDatabase();
+
+  let dateFilter: string;
+  let params: (string | number)[];
+
+  if (month !== undefined) {
+    const monthStr = String(month).padStart(2, '0');
+    dateFilter = `strftime('%Y-%m', date) = ?`;
+    params = [`${year}-${monthStr}`];
+  } else {
+    dateFilter = `strftime('%Y', date) = ?`;
+    params = [String(year)];
+  }
+
+  const sql = `
+    SELECT
+      a.id as accountId,
+      a.name as accountName,
+      a.type as accountType,
+      a.color as accountColor,
+      COALESCE(SUM(t.amount), 0) as total
+    FROM accounts a
+    LEFT JOIN transactions t ON a.id = t.account_id
+      AND t.type = 'expense'
+      AND ${dateFilter}
+    GROUP BY a.id
+    ORDER BY total DESC
+  `;
+
+  const stmt = database.prepare(sql);
+  stmt.bind(params);
+  const results: AccountSummary[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { accountId: string; accountName: string; accountType: Account['type']; accountColor: string; total: number };
+    results.push({
+      accountId: row.accountId,
+      accountName: row.accountName,
+      accountType: row.accountType,
+      accountColor: row.accountColor,
+      total: Number(row.total),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export function updateAccountBalance(id: string, balance: number): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'UPDATE accounts SET balance = ?, updated_at = ? WHERE id = ?',
+    [balance, now, id]
+  );
+  saveDatabase();
 }
