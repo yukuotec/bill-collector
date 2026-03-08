@@ -2,6 +2,32 @@ import { useEffect, useMemo, useState } from 'react';
 import { BudgetAlert, Summary } from '../../shared/types';
 import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts';
+import { SOURCES, SourceId } from '../../shared/sources';
+
+interface CategorySummary {
+  category: string;
+  total: number;
+  percentage: number;
+}
+
+interface MonthlyTrendData {
+  month: string;
+  expense: number;
+  income: number;
+  expenseChange: number | null;
+  incomeChange: number | null;
+}
+
+interface SourceCoverageWidgetItem {
+  source: string;
+  month: string;
+  count: number;
+}
+
+interface LastImportItem {
+  source: string;
+  lastDate: string | null;
+}
 
 interface CategorySummary {
   category: string;
@@ -50,6 +76,8 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
   const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendData[]>([]);
   const [currentMonth, setCurrentMonth] = useState<string>('');
   const [previousMonth, setPreviousMonth] = useState<string>('');
+  const [sourceCoverage, setSourceCoverage] = useState<SourceCoverageWidgetItem[]>([]);
+  const [lastImports, setLastImports] = useState<LastImportItem[]>([]);
 
   useEffect(() => {
     let cancelled = false;
@@ -123,6 +151,22 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
     };
 
     void loadMonthlyTrend();
+
+    // Load source coverage data
+    const loadSourceCoverage = async () => {
+      try {
+        const currentYear = new Date().getFullYear();
+        const [coverageData, lastImportData] = await Promise.all([
+          window.electronAPI.getSourceCoverage(currentYear),
+          window.electronAPI.getLastImportBySource(),
+        ]);
+        setSourceCoverage(coverageData);
+        setLastImports(lastImportData);
+      } catch (error) {
+        console.error('Failed to load source coverage:', error);
+      }
+    };
+    void loadSourceCoverage();
   }, []);
 
   const formatCurrency = (value: number) => `¥${value.toFixed(2)}`;
@@ -166,6 +210,29 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
       })),
     [summary]
   );
+
+  // Calculate source coverage status for widget
+  const getSourceStatus = (sourceId: string): { count: number; status: 'fresh' | 'stale' | 'missing' } => {
+    const lastImport = lastImports.find(li => li.source === sourceId);
+    const currentMonthStr = new Date().toISOString().slice(0, 7);
+    const currentMonthCount = sourceCoverage.filter(c => c.source === sourceId && c.month === currentMonthStr).length;
+
+    if (!lastImport?.lastDate) {
+      return { count: currentMonthCount, status: 'missing' };
+    }
+
+    const lastDate = new Date(lastImport.lastDate);
+    const now = new Date();
+    const daysDiff = Math.floor((now.getTime() - lastDate.getTime()) / (1000 * 60 * 60 * 24));
+
+    if (daysDiff <= 7) return { count: currentMonthCount, status: 'fresh' };
+    if (daysDiff <= 30) return { count: currentMonthCount, status: 'stale' };
+    return { count: currentMonthCount, status: 'missing' };
+  };
+
+  const missingSourcesCount = SOURCES.filter(s => getSourceStatus(s.id).status === 'missing').length;
+  const currentMonthStr = new Date().toISOString().slice(0, 7);
+  const hasCurrentMonthData = sourceCoverage.some(c => c.month === currentMonthStr);
 
   if (loading && !summary) return <div>加载中...</div>;
   if (!summary) return <div>暂无数据</div>;
@@ -255,6 +322,46 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
           ))}
         </div>
       )}
+
+      {/* Source Coverage Widget */}
+      <div
+        className={`source-coverage-widget ${missingSourcesCount > 0 ? 'has-missing' : ''}`}
+        onClick={() => window.location.hash = '#source-coverage'}
+        style={{ cursor: 'pointer' }}
+      >
+        <div className="widget-header">
+          <h3 className="widget-title">📅 数据收集状态</h3>
+          <span className="widget-link">查看详情 →</span>
+        </div>
+        <div className="widget-content">
+          <div className="coverage-overview">
+            {missingSourcesCount === 0 ? (
+              <div className="coverage-status good">
+                <span className="status-icon">✅</span>
+                <span>本月数据已收集完整</span>
+              </div>
+            ) : (
+              <div className="coverage-status warning">
+                <span className="status-icon">⚠️</span>
+                <span>{missingSourcesCount} 个来源需要更新</span>
+              </div>
+            )}
+          </div>
+          <div className="source-mini-list">
+            {SOURCES.map((source) => {
+              const { count, status } = getSourceStatus(source.id);
+              return (
+                <div key={source.id} className={`mini-source-item ${status}`}>
+                  <span className="mini-source-name">{source.name}</span>
+                  <span className={`mini-status ${status}`}>
+                    {status === 'fresh' ? '✓' : status === 'stale' ? '~' : '✗'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
 
       <div className="chart-container">
         <div className="chart-header">
