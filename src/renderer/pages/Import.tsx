@@ -76,9 +76,10 @@ export default function Import() {
     const loadAccounts = async () => {
       try {
         const data = await window.electronAPI.getAccounts();
-        setAccounts(data);
+        setAccounts(data || []);
       } catch (error) {
         console.error('Failed to load accounts:', error);
+        setAccounts([]);
       }
     };
     loadAccounts();
@@ -117,19 +118,24 @@ export default function Import() {
   const handleChooseFile = async () => {
     if (importing || previewLoading) return;
 
-    const selectedPath = await window.electronAPI.selectFile([
-      { name: '账单文件', extensions: ['csv', 'xlsx', 'pdf', 'html', 'png'] },
-      { name: 'CSV Files', extensions: ['csv'] },
-      { name: 'Excel Files', extensions: ['xlsx'] },
-      { name: 'PDF Files', extensions: ['pdf'] },
-      { name: 'HTML Files', extensions: ['html'] },
-      { name: 'Image Files', extensions: ['png'] },
-    ]);
-    if (!selectedPath) return;
+    try {
+      const selectedPath = await window.electronAPI.selectFile([
+        { name: '账单文件', extensions: ['csv', 'xlsx', 'pdf', 'html', 'png'] },
+        { name: 'CSV Files', extensions: ['csv'] },
+        { name: 'Excel Files', extensions: ['xlsx'] },
+        { name: 'PDF Files', extensions: ['pdf'] },
+        { name: 'HTML Files', extensions: ['html'] },
+        { name: 'Image Files', extensions: ['png'] },
+      ]);
+      if (!selectedPath) return;
 
-    setFilePath(selectedPath);
-    setFileName(getFileName(selectedPath));
-    await loadPreview(selectedPath, source);
+      setFilePath(selectedPath);
+      setFileName(getFileName(selectedPath));
+      await loadPreview(selectedPath, source);
+    } catch (error) {
+      console.error('Failed to select file:', error);
+      setMessage(`选择文件失败: ${String(error)}`);
+    }
   };
 
   const handleDrop = async (event: DragEvent<HTMLDivElement>) => {
@@ -137,15 +143,20 @@ export default function Import() {
     setDragging(false);
     if (importing || previewLoading) return;
 
-    const file = event.dataTransfer.files?.[0] as (File & { path?: string }) | undefined;
-    if (!file?.path) {
-      setMessage('无法获取拖拽文件路径，请使用文件选择按钮');
-      return;
-    }
+    try {
+      const file = event.dataTransfer.files?.[0] as (File & { path?: string }) | undefined;
+      if (!file?.path) {
+        setMessage('无法获取拖拽文件路径，请使用文件选择按钮');
+        return;
+      }
 
-    setFilePath(file.path);
-    setFileName(getFileName(file.path));
-    await loadPreview(file.path, source);
+      setFilePath(file.path);
+      setFileName(getFileName(file.path));
+      await loadPreview(file.path, source);
+    } catch (error) {
+      console.error('Failed to handle drop:', error);
+      setMessage(`处理拖拽文件失败: ${String(error)}`);
+    }
   };
 
   const handleSourceChange = async (nextSource: Source) => {
