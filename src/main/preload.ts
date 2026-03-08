@@ -108,6 +108,9 @@ const webAPI = {
   createTransaction: () => Promise.resolve({ id: null, success: false, error: 'Browser mode' }),
   getMerchantHistory: () => Promise.resolve([]),
   getCategories: () => Promise.resolve(['餐饮', '交通', '购物', '住房', '医疗', '娱乐', '通讯', '其他']),
+  // Source Coverage APIs (web fallback)
+  getSourceCoverage: () => Promise.resolve([]),
+  getLastImportBySource: () => Promise.resolve([]),
 };
 
 const electronAPI = {
@@ -208,6 +211,13 @@ const electronAPI = {
 
   getCategories: (): Promise<string[]> =>
     ipcRenderer.invoke('get-categories'),
+
+  // Source Coverage APIs
+  getSourceCoverage: (year: number): Promise<Array<{ source: string; month: string; count: number }>> =>
+    ipcRenderer.invoke('get-source-coverage', year),
+
+  getLastImportBySource: (): Promise<Array<{ source: string; lastDate: string | null }>> =>
+    ipcRenderer.invoke('get-last-import-by-source'),
 };
 
 // Export the appropriate API based on environment

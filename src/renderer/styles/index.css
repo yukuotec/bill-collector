@@ -2816,3 +2816,263 @@ select {
   font-size: 14px;
   opacity: 0.7;
 }
+
+/* ==================== Source Coverage ==================== */
+
+.source-coverage {
+  padding: 24px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.coverage-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 24px;
+}
+
+.coverage-header h2 {
+  margin: 0;
+  font-size: 24px;
+  color: var(--text-primary);
+}
+
+.year-selector select {
+  padding: 8px 16px;
+  font-size: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-card);
+  color: var(--text-primary);
+  cursor: pointer;
+}
+
+.coverage-summary {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.source-status {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background: var(--bg-card);
+  border-radius: 8px;
+  border: 1px solid var(--border-light);
+}
+
+.source-status.fresh {
+  border-left: 4px solid var(--success);
+}
+
+.source-status.stale {
+  border-left: 4px solid var(--warning);
+}
+
+.source-status.missing {
+  border-left: 4px solid var(--danger);
+}
+
+.status-badge {
+  font-size: 12px;
+  padding: 4px 8px;
+  border-radius: 4px;
+  background: var(--bg-main);
+}
+
+.status-badge.fresh {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.status-badge.stale {
+  background: var(--warning-light);
+  color: var(--warning);
+}
+
+.status-badge.missing {
+  background: var(--danger-light);
+  color: var(--danger);
+}
+
+.coverage-grid-container {
+  background: var(--bg-card);
+  border-radius: 12px;
+  border: 1px solid var(--border-light);
+  overflow-x: auto;
+  margin-bottom: 24px;
+}
+
+.coverage-grid {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 800px;
+}
+
+.coverage-grid th,
+.coverage-grid td {
+  padding: 12px 8px;
+  text-align: center;
+  border: 1px solid var(--border-light);
+}
+
+.coverage-grid th {
+  background: var(--bg-main);
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.coverage-grid th.current-month {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.source-col {
+  width: 150px;
+  text-align: left !important;
+}
+
+.source-name-cell {
+  text-align: left;
+}
+
+.source-info {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.source-icon {
+  font-size: 20px;
+}
+
+.source-label {
+  font-size: 14px;
+  color: var(--text-primary);
+}
+
+.coverage-cell {
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.coverage-cell:hover {
+  transform: scale(1.1);
+}
+
+.coverage-cell.na {
+  background: var(--bg-main);
+  color: var(--text-tertiary);
+}
+
+.coverage-cell.na:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+.coverage-cell.has-data {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.coverage-cell.current {
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.na-marker {
+  font-size: 12px;
+  opacity: 0.6;
+}
+
+.count {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.current-marker {
+  font-size: 10px;
+  opacity: 0.7;
+}
+
+.coverage-legend {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 24px;
+  padding: 16px;
+  background: var(--bg-card);
+  border-radius: 8px;
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.legend-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 32px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.legend-cell.has-data {
+  background: var(--success-light);
+  color: var(--success);
+}
+
+.legend-cell.na {
+  background: var(--bg-main);
+  color: var(--text-tertiary);
+  border: 1px solid var(--border-light);
+}
+
+.legend-cell.current {
+  background: var(--success-light);
+  color: var(--success);
+  box-shadow: inset 0 0 0 2px var(--primary);
+}
+
+.coverage-tips {
+  background: var(--info-light);
+  border-radius: 8px;
+  padding: 16px 20px;
+}
+
+.coverage-tips h4 {
+  margin: 0 0 12px 0;
+  color: var(--info);
+  font-size: 14px;
+}
+
+.coverage-tips ul {
+  margin: 0;
+  padding-left: 20px;
+  color: var(--text-secondary);
+  font-size: 14px;
+}
+
+.coverage-tips li {
+  margin-bottom: 4px;
+}
+
+.loading {
+  text-align: center;
+  padding: 60px;
+  color: var(--text-secondary);
+}

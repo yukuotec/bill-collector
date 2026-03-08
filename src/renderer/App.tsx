@@ -10,6 +10,7 @@ import Accounts from './pages/Accounts';
 import AssignTransactions from './pages/AssignTransactions';
 import EmailSettings from './pages/EmailSettings';
 import QuickAdd from './pages/QuickAdd';
+import SourceCoverage from './pages/SourceCoverage';
 
 declare global {
   interface Window {
@@ -108,6 +109,8 @@ declare global {
       createTransaction: (transaction: Omit<Transaction, 'id' | 'created_at' | 'updated_at'>) => Promise<{ id: string | null; success: boolean; error?: string }>;
       getMerchantHistory: (limit?: number) => Promise<string[]>;
       getCategories: () => Promise<string[]>;
+      getSourceCoverage: (year: number) => Promise<Array<{ source: string; month: string; count: number }>>;
+      getLastImportBySource: () => Promise<Array<{ source: string; lastDate: string | null }>>;
     };
   }
 }
@@ -120,6 +123,7 @@ const navItems = [
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
   { page: 'assign', label: '分配交易', icon: '📤' },
   { page: 'import', label: '导入', icon: '📥' },
+  { page: 'source-coverage', label: '数据收集', icon: '📅' },
   { page: 'transactions', label: '交易记录', icon: '📋' },
   { page: 'email-settings', label: '邮箱设置', icon: '📧' },
 ] as const;
@@ -186,6 +190,7 @@ export default function App() {
         )}
         {currentPage === 'assign' && <AssignTransactions />}
         {currentPage === 'email-settings' && <EmailSettings />}
+        {currentPage === 'source-coverage' && <SourceCoverage />}
         {currentPage === 'quick-add' && <QuickAdd onClose={() => navigate('dashboard')} />}
       </main>
     </div>

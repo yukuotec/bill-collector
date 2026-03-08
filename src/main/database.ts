@@ -1463,3 +1463,68 @@ export function updateAccountBalance(id: string, balance: number): void {
   );
   saveDatabase();
 }
+
+// ============== Source Coverage Functions ==============
+
+export interface SourceCoverageItem {
+  source: string;
+  month: string;
+  count: number;
+}
+
+/**
+ * Get transaction counts per source per month for coverage tracking
+ */
+export function getSourceCoverage(year: number): SourceCoverageItem[] {
+  const database = getDatabase();
+  const stmt = database.prepare(`
+    SELECT
+      source,
+      strftime('%Y-%m', date) as month,
+      COUNT(*) as count
+    FROM transactions
+    WHERE strftime('%Y', date) = ?
+      AND source IN ('alipay', 'wechat', 'yunshanfu', 'bank', 'manual')
+    GROUP BY source, month
+    ORDER BY month DESC, source
+  `);
+  stmt.bind([String(year)]);
+
+  const results: SourceCoverageItem[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { source: string; month: string; count: number };
+    results.push({
+      source: row.source,
+      month: row.month,
+      count: Number(row.count),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+/**
+ * Get the most recent import date for each source
+ */
+export function getLastImportBySource(): Array<{ source: string; lastDate: string | null }> {
+  const database = getDatabase();
+  const stmt = database.prepare(`
+    SELECT
+      source,
+      MAX(date) as lastDate
+    FROM transactions
+    WHERE source IN ('alipay', 'wechat', 'yunshanfu', 'bank', 'manual')
+    GROUP BY source
+  `);
+
+  const results: Array<{ source: string; lastDate: string | null }> = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { source: string; lastDate: string | null };
+    results.push({
+      source: row.source,
+      lastDate: row.lastDate,
+    });
+  }
+  stmt.free();
+  return results;
+}
