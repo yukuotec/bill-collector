@@ -126,6 +126,7 @@ CREATE TABLE transactions (
   notes TEXT,                      -- User notes
   tags TEXT,                       -- JSON array of custom tags
   member_id TEXT,                  -- Assigned family member ID
+  account_id TEXT,                 -- Assigned account ID
   is_refund INTEGER DEFAULT 0,     -- 1 if detected as refund
   refund_of TEXT,                  -- Referenced original transaction ID
   is_duplicate INTEGER DEFAULT 0,  -- 1 if marked as duplicate
@@ -140,6 +141,17 @@ CREATE TABLE transactions (
 ### Additional Tables
 
 ```sql
+-- Accounts
+CREATE TABLE accounts (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,              -- bank/credit/cash/alipay/wechat/other
+  balance REAL DEFAULT 0,
+  color TEXT DEFAULT '#3B82F6',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
 -- Family Members
 CREATE TABLE members (
   id TEXT PRIMARY KEY,
@@ -253,14 +265,15 @@ expense-tracker/
 │   │   ├── App.tsx
 │   │   ├── components/
 │   │   ├── pages/
-│   │   │   ├── Dashboard.tsx
-│   │   │   ├── Transactions.tsx
-│   │   │   ├── Import.tsx
-│   │   │   ├── Budgets.tsx
-│   │   │   ├── Members.tsx
+│   │   │   ├── Accounts.tsx
 │   │   │   ├── AssignTransactions.tsx
+│   │   │   ├── Budgets.tsx
+│   │   │   ├── Dashboard.tsx
 │   │   │   ├── EmailSettings.tsx
-│   │   │   └── QuickAdd.tsx
+│   │   │   ├── Import.tsx
+│   │   │   ├── Members.tsx
+│   │   │   ├── QuickAdd.tsx
+│   │   │   └── Transactions.tsx
 │   │   └── styles/
 │   ├── shared/        # Shared types & utilities
 │   │   ├── types.ts
@@ -324,13 +337,14 @@ expense-tracker/
 - [x] Refund detection and linking
 - [x] Bank statement parser
 - [x] S3 backup support
-- [x] Dashboard drill-down to Transactions (category/top merchant + date range + removable context chips)
+- [x] Dashboard drill-down to Transactions
 - [x] Smart assignment with pattern learning
 - [x] Triage rules for automatic assignment
 - [x] Batch assignment with confirmation prompts
 - [x] Email integration (IMAP sync, attachment processing)
 - [x] Quick add with autocomplete
 - [x] Multi-currency support
+- [x] **Multi-account support** (银行卡/信用卡/现金/电子钱包管理)
 
 ### Future (Post-MVP)
 - [ ] Auto-collection (web scraping / notification capture)
@@ -360,6 +374,7 @@ expense-cli email-import --source alipay wechat      # 从邮箱导入账单
 - **快速记账 (Quick Add):** Manual transaction entry
 - **仪表盘 (Dashboard):** Overview with drill-down capabilities
 - **预算 (Budgets):** Budget management and tracking
+- **账户 (Accounts):** Account management (bank/credit/cash/e-wallets)
 - **成员 (Members):** Family member management
 - **分配交易 (Assign Transactions):** Smart assignment interface
 - **导入 (Import):** File import with preview

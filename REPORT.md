@@ -62,14 +62,15 @@ expense-tracker/
 │   │   ├── main.tsx             # 前端入口
 │   │   ├── App.tsx              # 根组件
 │   │   └── pages/               # 页面组件
-│   │       ├── Dashboard.tsx    # 仪表盘 (18KB)
-│   │       ├── Transactions.tsx # 交易列表 (30KB)
-│   │       ├── Import.tsx       # 导入页面
-│   │       ├── QuickAdd.tsx     # 快速添加
-│   │       ├── Budgets.tsx      # 预算管理
-│   │       ├── Members.tsx      # 成员管理
-│   │       ├── EmailSettings.tsx # 邮件设置
-│   │       └── AssignTransactions.tsx # 交易分配
+│   │       ├── Accounts.tsx     # 账户管理 (新增)
+│   │       ├── AssignTransactions.tsx
+│   │       ├── Budgets.tsx
+│   │       ├── Dashboard.tsx
+│   │       ├── EmailSettings.tsx
+│   │       ├── Import.tsx
+│   │       ├── Members.tsx
+│   │       ├── QuickAdd.tsx
+│   │       └── Transactions.tsx
 │   │
 │   ├── parsers/                 # 账单解析模块
 │   │   ├── alipay.ts            # 支付宝解析
@@ -89,18 +90,22 @@ expense-tracker/
 │   │
 │   └── cli.ts                   # CLI 工具 (46KB)
 │
-├── tests/                       # 测试文件
-│   ├── parsers.test.js
+├── tests/                       # 测试文件 (18个测试文件，132+ 测试用例)
+│   ├── accounts.test.js          # 账户管理测试 (新增)
 │   ├── batch-dedupe.test.js
 │   ├── bulk-delete.test.js
 │   ├── category-summary.test.js
 │   ├── cli-recurring.test.js
 │   ├── cli-watch.test.js
+│   ├── database.test.js          # 数据库函数测试
 │   ├── date-filters.test.js
 │   ├── drilldown.test.js
 │   ├── email-import.test.js
 │   ├── import-preview.test.js
+│   ├── ipc.test.js               # IPC 处理器测试
 │   ├── merchant-search.test.js
+│   ├── parsers.test.js
+│   ├── react.test.js             # React 组件测试
 │   ├── source-merge.test.js
 │   ├── transaction-tags.test.js
 │   └── yearly-trend.test.js
@@ -182,28 +187,32 @@ expense-tracker/
 ## 4. 测试覆盖分析
 
 ```
-现有测试: 14 个测试文件
-├── parsers.test.js           ✓ 解析器测试
-├── batch-dedupe.test.js      ✓ 批量去重
-├── bulk-delete.test.js       ✓ 批量删除
-├── category-summary.test.js  ✓ 分类汇总
-├── cli-recurring.test.js     ✓ CLI 周期性任务
-├── cli-watch.test.js         ✓ CLI 文件监听
-├── date-filters.test.js      ✓ 日期过滤
-├── drilldown.test.js         ✓ 钻取功能
-├── email-import.test.js      ✓ 邮件导入
-├── import-preview.test.js    ✓ 导入预览
-├── merchant-search.test.js   ✓ 商户搜索
-├── source-merge.test.js      ✓ 数据源合并
-├── transaction-tags.test.js  ✓ 交易标签
-└── yearly-trend.test.js      ✓ 年度趋势
+现有测试: 18 个测试文件，132+ 测试用例
+├── accounts.test.js           ✓ 账户管理测试 (新增)
+├── batch-dedupe.test.js       ✓ 批量去重
+├── bulk-delete.test.js        ✓ 批量删除
+├── category-summary.test.js   ✓ 分类汇总
+├── cli-recurring.test.js      ✓ CLI 周期性任务
+├── cli-watch.test.js          ✓ CLI 文件监听
+├── database.test.js           ✓ 数据库函数测试
+├── date-filters.test.js       ✓ 日期过滤
+├── drilldown.test.js          ✓ 钻取功能
+├── email-import.test.js       ✓ 邮件导入
+├── import-preview.test.js     ✓ 导入预览
+├── ipc.test.js                ✓ IPC 处理器测试
+├── merchant-search.test.js    ✓ 商户搜索
+├── parsers.test.js            ✓ 解析器测试
+├── react.test.js              ✓ React 组件测试
+├── source-merge.test.js       ✓ 数据源合并
+├── transaction-tags.test.js   ✓ 交易标签
+└── yearly-trend.test.js       ✓ 年度趋势
+
+测试运行: npm test (全部通过 ✅)
+```
 
 缺失测试区域:
-- React 组件测试
-- IPC 通信测试
-- 数据库操作测试
 - E2E 集成测试
-```
+- 性能测试
 
 ---
 
@@ -215,14 +224,15 @@ expense-tracker/
 - 技术栈现代且完整 (Electron + React + TypeScript + Vite)
 - 支持多种账单格式解析 (支付宝、微信、银行、云山福、PDF、OCR)
 - 具备 CLI 工具能力
-- 有一定测试覆盖
+- 完整的测试覆盖 (132+ 测试)
+- 支持多账户管理 (银行卡/信用卡/现金/电子钱包)
 
 ⚠️ **待改进**
 - 代码组织可以更模块化
-- 缺少前端测试和 E2E 测试
+- 缺少 E2E 测试
 - 安全性和工程化配置有待加强
-- 缺少数据库迁移机制
+- 邮箱密码需要加密存储
 
 ---
 
-*报告生成时间: 2026-03-03*
+*报告生成时间: 2026-03-08*

@@ -1,6 +1,9 @@
 # 拖拽分配页面
 
-## 目标
+> **状态**: ✅ 已实现
+
+## 功能概述
+
 创建类似手机 APP 的拖拽交互界面，将未分配的交易拖拽到成员盒子里。
 
 ## UI 设计
@@ -33,50 +36,50 @@
   └──────────┘  └──────────┘  └──────────┘  └──────────┘
 ```
 
-## 功能
+## 功能特性
 
 ### 1. 页面入口
-- 在导航添加"分配交易"菜单项
-- 路径: /assign 或 /distribution
+- 路径: `/assign`
+- 导航菜单: "分配交易"
 
 ### 2. 待分配列表
-- 查询 member_id = NULL 的交易
+- 查询 `member_id = NULL` 的交易
 - 显示：金额、分类、日期、商户
 - 支持多选（checkbox）
 - 支持批量拖拽
 
 ### 3. 成员盒子
-- 显示所有成员（带颜色）
+- 显示所有成员（带颜色标识）
 - 显示该成员已分配金额和笔数
 - 是拖拽目标区域
 
 ### 4. 拖拽交互
 - HTML5 Drag and Drop API
 - 拖动交易卡片 → 放入成员盒子
-- 放下时自动调用 setTransactionMember
+- 放下时自动调用 `setTransactionMember`
 - 分配成功后从待分配列表移除
 
 ### 5. 批量提示
-- 分配后调用 checkSimilarAssignments
-- 如果 shouldPrompt=true，显示确认弹窗
+- 分配后调用 `checkSimilarAssignments`
+- 如果 `shouldPrompt=true`，显示确认弹窗
+- 支持一键分配相似交易
 
 ### 6. 刷新
 - 刷新待分配列表
 
 ## 实现
 
-### 1. 新建页面
-- src/renderer/pages/AssignTransactions.tsx
+### 页面文件
+- `src/renderer/pages/AssignTransactions.tsx`
 
-### 2. 修改 App.tsx
-- 添加路由 /assign → AssignTransactions
+### 相关 API
+- `getTransactions({ memberId: '' })` - 获取未分配交易
+- `setTransactionMember(transactionId, memberId)` - 分配成员
+- `checkSimilarAssignments` - 检查相似分配
+- `batchAssignSimilar` - 批量分配相似
+- `getMembers` - 获取成员列表
 
-### 3. 样式
-- 在 index.css 添加拖拽相关样式
+## 相关文档
 
-## 现有 API
-- getTransactions({ memberId: '' }) - 获取未分配交易
-- setTransactionMember(transactionId, memberId) - 分配成员
-- checkSimilarAssignments - 检查相似分配
-- batchAssignSimilar - 批量分配相似
-- getMembers - 获取成员列表
+- [Member Management](./member-management.md) - 成员管理
+- [Smart Assignment](./smart-assignment.md) - 智能分配
