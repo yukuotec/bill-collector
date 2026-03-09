@@ -15,6 +15,19 @@ import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
+import {
+  ValidationError,
+  validateFilePath,
+  validateSource,
+  validateId,
+  validateString,
+  validateAmount,
+  validateDate,
+  validateYear,
+  validateIdArray,
+  validateCategory,
+  withValidation
+} from './validation';
 
 type Source = TransactionSource;
 type SupportedImportExt = '.csv' | '.xlsx' | '.pdf' | '.html' | '.htm' | '.png';
@@ -723,6 +736,31 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   });
 
   ipcMain.handle('import-csv', async (_, filePath: string, source: Source, options?: ImportCsvOptions & { accountId?: string }) => {
+    // Validate inputs
+    try {
+      validateFilePath(filePath);
+      validateSource(source);
+      if (options?.accountId) {
+        validateId(options.accountId, 'accountId');
+      }
+    } catch (error) {
+      if (error instanceof ValidationError) {
+        return {
+          importId: null,
+          parsedCount: 0,
+          inserted: 0,
+          exactMerged: 0,
+          fuzzyFlagged: 0,
+          exactCount: 0,
+          samePeriodCount: 0,
+          crossPlatformCount: 0,
+          errors: [error.message],
+          preview: [],
+        };
+      }
+      throw error;
+    }
+
     const result: ImportCsvResult = {
       importId: null,
       parsedCount: 0,
@@ -1061,32 +1099,37 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     };
   });
 
-  ipcMain.handle('update-category', async (_, id: string, category: string) => {
+  ipcMain.handle('update-category', withValidation('update-category', async (_, id: string, category: string) => {
+    validateId(id, 'transaction id');
+    validateCategory(category);
     const db = getDatabase();
     const now = new Date().toISOString();
     db.run('UPDATE transactions SET category = ?, updated_at = ? WHERE id = ?', [category, now, id]);
     saveDatabase();
     return true;
-  });
+  }));
 
-  ipcMain.handle('update-notes', async (_, id: string, notes: string) => {
+  ipcMain.handle('update-notes', withValidation('update-notes', async (_, id: string, notes: string) => {
+    validateId(id, 'transaction id');
+    const sanitizedNotes = validateString(notes, 'notes', 5000);
     const db = getDatabase();
     const now = new Date().toISOString();
-    db.run('UPDATE transactions SET notes = ?, updated_at = ? WHERE id = ?', [notes || null, now, id]);
+    db.run('UPDATE transactions SET notes = ?, updated_at = ? WHERE id = ?', [sanitizedNotes || null, now, id]);
     saveDatabase();
     return true;
-  });
+  }));
 
   ipcMain.handle('update-currency', async (_, id: string, currency: string) => {
     return updateTransactionCurrency(id, currency);
   });
 
-  ipcMain.handle('delete-transaction', async (_, id: string) => {
+  ipcMain.handle('delete-transaction', withValidation('delete-transaction', async (_, id: string) => {
+    validateId(id, 'transaction id');
     const db = getDatabase();
     db.run('DELETE FROM transactions WHERE id = ?', [id]);
     saveDatabase();
     return true;
-  });
+  }));
 
   ipcMain.handle('delete-transactions-by-ids', async (_, ids: string[]) => {
     if (!ids || ids.length === 0) {

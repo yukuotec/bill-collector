@@ -1,7 +1,7 @@
 import { getConfig } from '../config';
 import { getLastImportBySource, closeDb } from '../db';
 
-export function remindCommand(): void {
+export function remindCommand(): number {
   const config = getConfig();
   const statuses = getLastImportBySource();
   closeDb();
@@ -41,7 +41,7 @@ export function remindCommand(): void {
 
   if (staleSources.length === 0) {
     console.log('');
-    process.exit(0);
+    return 0;
   }
 
   console.log('\n⚠️ 需要关注的数据源:\n');
@@ -57,5 +57,5 @@ export function remindCommand(): void {
   console.log('');
   console.log(`💡 运行 \x1b[36mcollector status\x1b[0m 查看完整状态\n`);
 
-  process.exit(1);
+  return 1;
 }

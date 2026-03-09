@@ -18,7 +18,8 @@ program
   .command('status')
   .description('Show freshness status for all sources')
   .action(() => {
-    statusCommand();
+    const exitCode = statusCommand();
+    process.exit(exitCode);
   });
 
 program
@@ -41,7 +42,8 @@ program
   .command('remind')
   .description('Check if any sources are stale (for cron)')
   .action(() => {
-    remindCommand();
+    const exitCode = remindCommand();
+    process.exit(exitCode);
   });
 
 program

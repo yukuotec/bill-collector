@@ -1,7 +1,7 @@
 import { getConfig } from '../config';
 import { getLastImportBySource, closeDb } from '../db';
 
-export function statusCommand(): void {
+export function statusCommand(): number {
   const config = getConfig();
   const statuses = getLastImportBySource();
   closeDb();
@@ -79,5 +79,5 @@ export function statusCommand(): void {
     console.log('✨ 所有数据源都是最新的！\n');
   }
 
-  process.exit(staleCount > 0 ? 1 : 0);
+  return staleCount > 0 ? 1 : 0;
 }

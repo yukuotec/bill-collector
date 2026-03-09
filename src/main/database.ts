@@ -77,6 +77,8 @@ function ensureSchema(): void {
     )
   `);
 
+  database.run('CREATE INDEX IF NOT EXISTS idx_budgets_year_month ON budgets(year_month)');
+
   database.run(`
     CREATE TABLE IF NOT EXISTS imports (
       id TEXT PRIMARY KEY,
@@ -117,6 +119,28 @@ function ensureSchema(): void {
 
   const ensureColumn = (name: string, sqlType: string): void => {
     if (!existingColumns.has(name)) {
+      // Whitelist allowed column names and types to prevent SQL injection
+      const allowedColumns: Record<string, string> = {
+        'import_id': 'TEXT',
+        'original_source': 'TEXT',
+        'original_id': 'TEXT',
+        'bank_name': 'TEXT',
+        'is_refund': 'INTEGER DEFAULT 0',
+        'refund_of': 'TEXT',
+        'duplicate_source': 'TEXT',
+        'duplicate_type': 'TEXT',
+        'merged_with': 'TEXT',
+        'tags': 'TEXT',
+        'currency': 'TEXT DEFAULT "CNY"',
+        'member_id': 'TEXT',
+        'account_id': 'TEXT',
+      };
+
+      if (!allowedColumns[name] || allowedColumns[name] !== sqlType) {
+        console.error(`[Schema Migration] Invalid column or type: ${name} ${sqlType}`);
+        return;
+      }
+
       database.run(`ALTER TABLE transactions ADD COLUMN ${name} ${sqlType}`);
     }
   };
@@ -139,6 +163,9 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_source ON transactions(source)');
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_duplicate_type ON transactions(duplicate_type)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_member_id ON transactions(member_id)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_counterparty ON transactions(counterparty)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_transactions_type ON transactions(type)');
 
   // Smart Assignment tables
   database.run(`
