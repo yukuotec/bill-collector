@@ -1,0 +1,30 @@
+{
+  "name": "bill-collector-cli",
+  "version": "1.0.0",
+  "description": "CLI tool to streamline expense data collection from multiple sources",
+  "main": "dist/index.js",
+  "bin": {
+    "collector": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsc --watch",
+    "start": "node dist/index.js",
+    "test": "node --test dist/**/*.test.js"
+  },
+  "keywords": ["expense", "tracker", "cli", "alipay", "wechat"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chokidar": "^3.6.0",
+    "commander": "^12.0.0",
+    "open": "^10.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "typescript": "^5.3.3"
+  },
+  "optionalDependencies": {
+    "better-sqlite3": "^9.4.3"
+  }
+}
