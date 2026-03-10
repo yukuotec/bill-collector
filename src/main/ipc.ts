@@ -723,16 +723,21 @@ function writeXlsx(filePath: string, rows: Record<string, unknown>[]): void {
 
 export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   ipcMain.handle('select-file', async (_, filters: { name: string; extensions: string[] }[]) => {
-    const result = await dialog.showOpenDialog({
-      properties: ['openFile'],
-      filters: filters.length > 0 ? filters : [{ name: '账单文件', extensions: ['csv', 'xlsx', 'pdf', 'html', 'png'] }],
-    });
+    try {
+      const result = await dialog.showOpenDialog({
+        properties: ['openFile'],
+        filters: filters.length > 0 ? filters : [{ name: '账单文件', extensions: ['csv', 'xlsx', 'pdf', 'html', 'png'] }],
+      });
 
-    if (result.canceled || result.filePaths.length === 0) {
-      return null;
+      if (result.canceled || result.filePaths.length === 0) {
+        return null;
+      }
+
+      return result.filePaths[0];
+    } catch (error) {
+      console.error('[IPC Error] select-file:', error);
+      throw error;
     }
-
-    return result.filePaths[0];
   });
 
   ipcMain.handle('import-csv', async (_, filePath: string, source: Source, options?: ImportCsvOptions & { accountId?: string }) => {
@@ -872,231 +877,256 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   });
 
   ipcMain.handle('get-transactions', async (_, filters?: TransactionQuery): Promise<TransactionListResponse> => {
-    const { where, params } = buildTransactionWhereClause(filters);
+    try {
+      const { where, params } = buildTransactionWhereClause(filters);
 
-    const whereClause = where.join(' AND ');
-    const countRows = queryAll(`SELECT COUNT(*) as total FROM transactions WHERE ${whereClause}`, params);
-    const total = Number(countRows[0]?.total ?? 0);
+      const whereClause = where.join(' AND ');
+      const countRows = queryAll(`SELECT COUNT(*) as total FROM transactions WHERE ${whereClause}`, params);
+      const total = Number(countRows[0]?.total ?? 0);
 
-    const sortBy = filters?.sortBy === 'amount' ? 'amount' : 'date';
-    const sortOrder = filters?.sortOrder === 'asc' ? 'ASC' : 'DESC';
-    const page = Math.max(1, filters?.page ?? 1);
-    const pageSize = Math.min(200, Math.max(1, filters?.pageSize ?? 20));
-    const offset = (page - 1) * pageSize;
+      const sortBy = filters?.sortBy === 'amount' ? 'amount' : 'date';
+      const sortOrder = filters?.sortOrder === 'asc' ? 'ASC' : 'DESC';
+      const page = Math.max(1, filters?.page ?? 1);
+      const pageSize = Math.min(200, Math.max(1, filters?.pageSize ?? 20));
+      const offset = (page - 1) * pageSize;
 
-    const listQuery = `
-      SELECT *
-      FROM transactions
-      WHERE ${whereClause}
-      ORDER BY ${sortBy} ${sortOrder}, created_at DESC
-      LIMIT ? OFFSET ?
-    `;
-    const items = queryAll(listQuery, [...params, pageSize, offset]) as unknown as Transaction[];
+      const listQuery = `
+        SELECT *
+        FROM transactions
+        WHERE ${whereClause}
+        ORDER BY ${sortBy} ${sortOrder}, created_at DESC
+        LIMIT ? OFFSET ?
+      `;
+      const items = queryAll(listQuery, [...params, pageSize, offset]) as unknown as Transaction[];
 
-    return {
-      items,
-      totalCount: total,
-      total,
-      page,
-      pageSize,
-    };
+      return {
+        items,
+        totalCount: total,
+        total,
+        page,
+        pageSize,
+      };
+    } catch (error) {
+      console.error('[IPC Error] get-transactions:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-duplicate-transactions', async (): Promise<DuplicateReviewItem[]> => {
-    return queryAll(
-      `
-      SELECT
-        d.*,
-        t.id AS target_id,
-        t.date AS target_date,
-        t.amount AS target_amount,
-        t.counterparty AS target_counterparty,
-        t.description AS target_description,
-        t.source AS target_source,
-        t.type AS target_type
-      FROM transactions d
-      LEFT JOIN transactions t ON d.merged_with = t.id
-      WHERE d.is_duplicate = 1
-      ORDER BY d.date DESC, d.created_at DESC
-      `
-    ) as unknown as DuplicateReviewItem[];
+    try {
+      return queryAll(
+        `
+        SELECT
+          d.*,
+          t.id AS target_id,
+          t.date AS target_date,
+          t.amount AS target_amount,
+          t.counterparty AS target_counterparty,
+          t.description AS target_description,
+          t.source AS target_source,
+          t.type AS target_type
+        FROM transactions d
+        LEFT JOIN transactions t ON d.merged_with = t.id
+        WHERE d.is_duplicate = 1
+        ORDER BY d.date DESC, d.created_at DESC
+        `
+      ) as unknown as DuplicateReviewItem[];
+    } catch (error) {
+      console.error('[IPC Error] get-duplicate-transactions:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('resolve-duplicate', async (_, id: string, action: 'keep' | 'merge') => {
-    const db = getDatabase();
-    const now = new Date().toISOString();
+    try {
+      const db = getDatabase();
+      const now = new Date().toISOString();
 
-    if (action === 'keep') {
-      db.run(
-        'UPDATE transactions SET is_duplicate = 0, duplicate_source = NULL, duplicate_type = NULL, merged_with = NULL, updated_at = ? WHERE id = ?',
-        [now, id]
-      );
+      if (action === 'keep') {
+        db.run(
+          'UPDATE transactions SET is_duplicate = 0, duplicate_source = NULL, duplicate_type = NULL, merged_with = NULL, updated_at = ? WHERE id = ?',
+          [now, id]
+        );
+        saveDatabase();
+        return true;
+      }
+
+      const rows = queryAll('SELECT * FROM transactions WHERE id = ? LIMIT 1', [id]);
+      if (rows.length === 0) return false;
+      const txn = rows[0] as unknown as Transaction;
+
+      let targetId = typeof txn.merged_with === 'string' ? txn.merged_with : '';
+      if (!targetId) {
+        const candidate = findDuplicateCandidate(txn);
+        targetId = candidate.exactId || candidate.pending?.targetId || '';
+      }
+
+      if (!targetId) return false;
+
+      db.run('DELETE FROM transactions WHERE id = ?', [id]);
+      db.run('UPDATE transactions SET updated_at = ? WHERE id = ?', [now, targetId]);
       saveDatabase();
       return true;
+    } catch (error) {
+      console.error('[IPC Error] resolve-duplicate:', error);
+      throw error;
     }
-
-    const rows = queryAll('SELECT * FROM transactions WHERE id = ? LIMIT 1', [id]);
-    if (rows.length === 0) return false;
-    const txn = rows[0] as unknown as Transaction;
-
-    let targetId = typeof txn.merged_with === 'string' ? txn.merged_with : '';
-    if (!targetId) {
-      const candidate = findDuplicateCandidate(txn);
-      targetId = candidate.exactId || candidate.pending?.targetId || '';
-    }
-
-    if (!targetId) return false;
-
-    db.run('DELETE FROM transactions WHERE id = ?', [id]);
-    db.run('UPDATE transactions SET updated_at = ? WHERE id = ?', [now, targetId]);
-    saveDatabase();
-    return true;
   });
 
   ipcMain.handle('get-category-summary', async (_, year?: number): Promise<{ category: string; total: number; percentage: number }[]> => {
-    const now = new Date();
-    const targetYear = Number.isInteger(year) ? year : now.getFullYear();
+    try {
+      const now = new Date();
+      const targetYear = Number.isInteger(year) ? year : now.getFullYear();
 
-    const rows = queryAll(
-      `
-      SELECT COALESCE(NULLIF(TRIM(category), ''), '其他') as category, SUM(amount) as total
-      FROM transactions
-      WHERE type = 'expense'
-        AND strftime('%Y', date) = ?
-      GROUP BY category
-      ORDER BY total DESC
-      LIMIT 5
-    `,
-      [String(targetYear)]
-    );
+      const rows = queryAll(
+        `
+        SELECT COALESCE(NULLIF(TRIM(category), ''), '其他') as category, SUM(amount) as total
+        FROM transactions
+        WHERE type = 'expense'
+          AND strftime('%Y', date) = ?
+        GROUP BY category
+        ORDER BY total DESC
+        LIMIT 5
+      `,
+        [String(targetYear)]
+      );
 
-    // Calculate total for percentage calculation
-    const allRows = queryAll(
-      `
-      SELECT SUM(amount) as grandTotal
-      FROM transactions
-      WHERE type = 'expense'
-        AND strftime('%Y', date) = ?
-    `,
-      [String(targetYear)]
-    );
+      // Calculate total for percentage calculation
+      const allRows = queryAll(
+        `
+        SELECT SUM(amount) as grandTotal
+        FROM transactions
+        WHERE type = 'expense'
+          AND strftime('%Y', date) = ?
+      `,
+        [String(targetYear)]
+      );
 
-    const grandTotal = Number(allRows[0]?.grandTotal ?? 0);
+      const grandTotal = Number(allRows[0]?.grandTotal ?? 0);
 
-    return rows.map((row) => ({
-      category: String(row.category ?? '其他'),
-      total: Number(row.total ?? 0),
-      percentage: grandTotal > 0 ? (Number(row.total ?? 0) / grandTotal) * 100 : 0,
-    }));
+      return rows.map((row) => ({
+        category: String(row.category ?? '其他'),
+        total: Number(row.total ?? 0),
+        percentage: grandTotal > 0 ? (Number(row.total ?? 0) / grandTotal) * 100 : 0,
+      }));
+    } catch (error) {
+      console.error('[IPC Error] get-category-summary:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-summary', async (_, query?: SummaryQuery): Promise<Summary> => {
-    const now = new Date();
-    const currentYear = now.getFullYear();
-    const currentMonthNumber = String(now.getMonth() + 1).padStart(2, '0');
-    const targetYear = Number.isInteger(query?.year) ? Number(query?.year) : currentYear;
-    const months = Math.min(24, Math.max(6, query?.months ?? 12));
-    const targetMonth = `${targetYear}-${currentMonthNumber}`;
+    try {
+      const now = new Date();
+      const currentYear = now.getFullYear();
+      const currentMonthNumber = String(now.getMonth() + 1).padStart(2, '0');
+      const targetYear = Number.isInteger(query?.year) ? Number(query?.year) : currentYear;
+      const months = Math.min(24, Math.max(6, query?.months ?? 12));
+      const targetMonth = `${targetYear}-${currentMonthNumber}`;
 
-    const availableYearsRows = queryAll(`
-      SELECT DISTINCT CAST(strftime('%Y', date) AS INTEGER) as year
-      FROM transactions
-      WHERE date IS NOT NULL AND date != ''
-      ORDER BY year DESC
-    `);
-    const availableYears = availableYearsRows
-      .map((row) => Number(row.year))
-      .filter((year) => Number.isInteger(year) && year > 0);
+      const availableYearsRows = queryAll(`
+        SELECT DISTINCT CAST(strftime('%Y', date) AS INTEGER) as year
+        FROM transactions
+        WHERE date IS NOT NULL AND date != ''
+        ORDER BY year DESC
+      `);
+      const availableYears = availableYearsRows
+        .map((row) => Number(row.year))
+        .filter((year) => Number.isInteger(year) && year > 0);
 
-    const monthlyRows = queryAll(
-      `
-      SELECT
-        strftime('%Y-%m', date) as month,
-        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
-      FROM transactions
-      WHERE type IN ('expense', 'income')
-        AND strftime('%Y', date) = ?
-      GROUP BY month
-      ORDER BY month DESC
-      LIMIT ?
-    `,
-      [String(targetYear), months]
-    );
-    const monthly = monthlyRows.map((row) => ({
-      month: String(row.month ?? ''),
-      expense: Number(row.expense ?? 0),
-      income: Number(row.income ?? 0),
-    }));
+      const monthlyRows = queryAll(
+        `
+        SELECT
+          strftime('%Y-%m', date) as month,
+          SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+          SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
+        FROM transactions
+        WHERE type IN ('expense', 'income')
+          AND strftime('%Y', date) = ?
+        GROUP BY month
+        ORDER BY month DESC
+        LIMIT ?
+      `,
+        [String(targetYear), months]
+      );
+      const monthly = monthlyRows.map((row) => ({
+        month: String(row.month ?? ''),
+        expense: Number(row.expense ?? 0),
+        income: Number(row.income ?? 0),
+      }));
 
-    const currentMonthRows = queryAll(
-      `
-      SELECT
-        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
-      FROM transactions
-      WHERE type IN ('expense', 'income')
-        AND strftime('%Y-%m', date) = ?
-    `,
-      [targetMonth]
-    );
-    const currentMonthExpense = Number(currentMonthRows[0]?.expense ?? 0);
-    const currentMonthIncome = Number(currentMonthRows[0]?.income ?? 0);
-    const yearlyExpense = monthly.reduce((sum, item) => sum + item.expense, 0);
-    const yearlyIncome = monthly.reduce((sum, item) => sum + item.income, 0);
-    const yearlyNet = yearlyIncome - yearlyExpense;
+      const currentMonthRows = queryAll(
+        `
+        SELECT
+          SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+          SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
+        FROM transactions
+        WHERE type IN ('expense', 'income')
+          AND strftime('%Y-%m', date) = ?
+      `,
+        [targetMonth]
+      );
+      const currentMonthExpense = Number(currentMonthRows[0]?.expense ?? 0);
+      const currentMonthIncome = Number(currentMonthRows[0]?.income ?? 0);
+      const yearlyExpense = monthly.reduce((sum, item) => sum + item.expense, 0);
+      const yearlyIncome = monthly.reduce((sum, item) => sum + item.income, 0);
+      const yearlyNet = yearlyIncome - yearlyExpense;
 
-    const byCategoryRows = queryAll(
-      `
-      SELECT COALESCE(NULLIF(TRIM(category), ''), '其他') as category, SUM(amount) as total
-      FROM transactions
-      WHERE type = 'expense'
-        AND strftime('%Y', date) = ?
-      GROUP BY category
-      ORDER BY total DESC
-    `,
-      [String(targetYear)]
-    );
-    const byCategory = byCategoryRows.map((row) => ({
-      category: String(row.category ?? '其他'),
-      total: Number(row.total ?? 0),
-    }));
+      const byCategoryRows = queryAll(
+        `
+        SELECT COALESCE(NULLIF(TRIM(category), ''), '其他') as category, SUM(amount) as total
+        FROM transactions
+        WHERE type = 'expense'
+          AND strftime('%Y', date) = ?
+        GROUP BY category
+        ORDER BY total DESC
+      `,
+        [String(targetYear)]
+      );
+      const byCategory = byCategoryRows.map((row) => ({
+        category: String(row.category ?? '其他'),
+        total: Number(row.total ?? 0),
+      }));
 
-    const topMerchantsRows = queryAll(
-      `
-      SELECT counterparty, COUNT(*) as count, SUM(amount) as total
-      FROM transactions
-      WHERE type = 'expense'
-        AND strftime('%Y', date) = ?
-        AND counterparty IS NOT NULL
-        AND TRIM(counterparty) != ''
-      GROUP BY counterparty
-      ORDER BY total DESC, count DESC
-      LIMIT 10
-    `,
-      [String(targetYear)]
-    );
-    const topMerchants = topMerchantsRows.map((row) => ({
-      counterparty: String(row.counterparty ?? ''),
-      count: Number(row.count ?? 0),
-      total: Number(row.total ?? 0),
-    }));
+      const topMerchantsRows = queryAll(
+        `
+        SELECT counterparty, COUNT(*) as count, SUM(amount) as total
+        FROM transactions
+        WHERE type = 'expense'
+          AND strftime('%Y', date) = ?
+          AND counterparty IS NOT NULL
+          AND TRIM(counterparty) != ''
+        GROUP BY counterparty
+        ORDER BY total DESC, count DESC
+        LIMIT 10
+      `,
+        [String(targetYear)]
+      );
+      const topMerchants = topMerchantsRows.map((row) => ({
+        counterparty: String(row.counterparty ?? ''),
+        count: Number(row.count ?? 0),
+        total: Number(row.total ?? 0),
+      }));
 
-    return {
-      year: targetYear,
-      currentMonth: targetMonth,
-      currentMonthExpense,
-      currentMonthIncome,
-      yearlyExpense,
-      yearlyIncome,
-      yearlyNet,
-      monthly,
-      byCategory,
-      topMerchants,
-      byMember: getMemberSpendingSummary(targetYear),
-      byAccount: getAccountSpendingSummary(targetYear),
-      availableYears: availableYears.length > 0 ? availableYears : [currentYear],
-    };
+      return {
+        year: targetYear,
+        currentMonth: targetMonth,
+        currentMonthExpense,
+        currentMonthIncome,
+        yearlyExpense,
+        yearlyIncome,
+        yearlyNet,
+        monthly,
+        byCategory,
+        topMerchants,
+        byMember: getMemberSpendingSummary(targetYear),
+        byAccount: getAccountSpendingSummary(targetYear),
+        availableYears: availableYears.length > 0 ? availableYears : [currentYear],
+      };
+    } catch (error) {
+      console.error('[IPC Error] get-summary:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('update-category', withValidation('update-category', async (_, id: string, category: string) => {
@@ -1120,7 +1150,12 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   }));
 
   ipcMain.handle('update-currency', async (_, id: string, currency: string) => {
-    return updateTransactionCurrency(id, currency);
+    try {
+      return updateTransactionCurrency(id, currency);
+    } catch (error) {
+      console.error('[IPC Error] update-currency:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('delete-transaction', withValidation('delete-transaction', async (_, id: string) => {
@@ -1132,14 +1167,19 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
   }));
 
   ipcMain.handle('delete-transactions-by-ids', async (_, ids: string[]) => {
-    if (!ids || ids.length === 0) {
-      return { deleted: 0 };
+    try {
+      if (!ids || ids.length === 0) {
+        return { deleted: 0 };
+      }
+      const db = getDatabase();
+      const placeholders = ids.map(() => '?').join(',');
+      db.run(`DELETE FROM transactions WHERE id IN (${placeholders})`, ids);
+      saveDatabase();
+      return { deleted: ids.length };
+    } catch (error) {
+      console.error('[IPC Error] delete-transactions-by-ids:', error);
+      throw error;
     }
-    const db = getDatabase();
-    const placeholders = ids.map(() => '?').join(',');
-    db.run(`DELETE FROM transactions WHERE id IN (${placeholders})`, ids);
-    saveDatabase();
-    return { deleted: ids.length };
   });
 
   // Quick Add - Create single transaction
@@ -1193,130 +1233,190 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
 
   // Get merchant history for autocomplete
   ipcMain.handle('get-merchant-history', async (_, limit: number = 20): Promise<string[]> => {
-    const rows = queryAll(
-      `SELECT DISTINCT counterparty 
-       FROM transactions 
-       WHERE counterparty IS NOT NULL 
-         AND TRIM(counterparty) != ''
-       ORDER BY date DESC, created_at DESC 
-       LIMIT ?`,
-      [limit]
-    );
-    return rows.map(row => String(row.counterparty || '')).filter(Boolean);
+    try {
+      const rows = queryAll(
+        `SELECT DISTINCT counterparty
+         FROM transactions
+         WHERE counterparty IS NOT NULL
+           AND TRIM(counterparty) != ''
+         ORDER BY date DESC, created_at DESC
+         LIMIT ?`,
+        [limit]
+      );
+      return rows.map(row => String(row.counterparty || '')).filter(Boolean);
+    } catch (error) {
+      console.error('[IPC Error] get-merchant-history:', error);
+      throw error;
+    }
   });
 
   // Get categories list
   ipcMain.handle('get-categories', async (): Promise<string[]> => {
-    const rows = queryAll(
-      `SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), '其他') as category
-       FROM transactions
-       WHERE category IS NOT NULL
-       ORDER BY category`
-    );
-    return rows.map(row => String(row.category || '其他'));
+    try {
+      const rows = queryAll(
+        `SELECT DISTINCT COALESCE(NULLIF(TRIM(category), ''), '其他') as category
+         FROM transactions
+         WHERE category IS NOT NULL
+         ORDER BY category`
+      );
+      return rows.map(row => String(row.category || '其他'));
+    } catch (error) {
+      console.error('[IPC Error] get-categories:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('export-csv', async (_, ids?: string[]) => {
-    let transactions;
-    if (ids && ids.length > 0) {
-      const placeholders = ids.map(() => '?').join(',');
-      transactions = queryAll(`SELECT * FROM transactions WHERE id IN (${placeholders}) ORDER BY date DESC, created_at DESC`, ids);
-    } else {
-      transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
-    }
-    const result = await dialog.showSaveDialog({
-      filters: [{ name: 'CSV Files', extensions: ['csv'] }],
-      defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.csv`,
-    });
-    if (result.canceled || !result.filePath) return null;
+    try {
+      let transactions;
+      if (ids && ids.length > 0) {
+        const placeholders = ids.map(() => '?').join(',');
+        transactions = queryAll(`SELECT * FROM transactions WHERE id IN (${placeholders}) ORDER BY date DESC, created_at DESC`, ids);
+      } else {
+        transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+      }
+      const result = await dialog.showSaveDialog({
+        filters: [{ name: 'CSV Files', extensions: ['csv'] }],
+        defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.csv`,
+      });
+      if (result.canceled || !result.filePath) return null;
 
-    const csv = Papa.unparse(transactions);
-    fs.writeFileSync(result.filePath, '\ufeff' + csv, 'utf-8');
-    return result.filePath;
+      const csv = Papa.unparse(transactions);
+      fs.writeFileSync(result.filePath, '\ufeff' + csv, 'utf-8');
+      return result.filePath;
+    } catch (error) {
+      console.error('[IPC Error] export-csv:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('export-excel', async () => {
-    const transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
-    const result = await dialog.showSaveDialog({
-      filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
-      defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.xlsx`,
-    });
-    if (result.canceled || !result.filePath) return null;
+    try {
+      const transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+      const result = await dialog.showSaveDialog({
+        filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
+        defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.xlsx`,
+      });
+      if (result.canceled || !result.filePath) return null;
 
-    writeXlsx(result.filePath, transactions);
-    return result.filePath;
+      writeXlsx(result.filePath, transactions);
+      return result.filePath;
+    } catch (error) {
+      console.error('[IPC Error] export-excel:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('backup-database', async () => {
-    const sourcePath = getDatabasePath();
-    const result = await dialog.showSaveDialog({
-      filters: [{ name: 'Database Backup', extensions: ['db'] }],
-      defaultPath: `expenses-backup-${new Date().toISOString().split('T')[0]}.db`,
-    });
-    if (result.canceled || !result.filePath) return null;
+    try {
+      const sourcePath = getDatabasePath();
+      const result = await dialog.showSaveDialog({
+        filters: [{ name: 'Database Backup', extensions: ['db'] }],
+        defaultPath: `expenses-backup-${new Date().toISOString().split('T')[0]}.db`,
+      });
+      if (result.canceled || !result.filePath) return null;
 
-    saveDatabase();
-    fs.copyFileSync(sourcePath, result.filePath);
-    return result.filePath;
+      saveDatabase();
+      fs.copyFileSync(sourcePath, result.filePath);
+      return result.filePath;
+    } catch (error) {
+      console.error('[IPC Error] backup-database:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-budgets', async (): Promise<Budget[]> => {
-    return getBudgets();
+    try {
+      return getBudgets();
+    } catch (error) {
+      console.error('[IPC Error] get-budgets:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('set-budget', async (_, id: string, yearMonth: string, amount: number, category: string | null) => {
-    setBudget(id, yearMonth, amount, category);
-    return true;
+    try {
+      setBudget(id, yearMonth, amount, category);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] set-budget:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('delete-budget', async (_, id: string) => {
-    deleteBudget(id);
-    return true;
+    try {
+      deleteBudget(id);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] delete-budget:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-budget-alerts', async (_, yearMonth?: string): Promise<BudgetAlert[]> => {
-    const budgets = getBudgets();
-    const now = new Date();
-    const targetYearMonth = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    
-    const alerts: BudgetAlert[] = [];
-    
-    for (const budget of budgets) {
-      if (budget.year_month === targetYearMonth) {
-        const spent = getBudgetSpending(budget.year_month, budget.category);
-        const remaining = budget.amount - spent;
-        const percentage = budget.amount > 0 ? (spent / budget.amount) * 100 : 100;
-        
-        let status: 'ok' | 'warning' | 'exceeded' = 'ok';
-        if (percentage >= 100) {
-          status = 'exceeded';
-        } else if (percentage >= 80) {
-          status = 'warning';
+    try {
+      const budgets = getBudgets();
+      const now = new Date();
+      const targetYearMonth = yearMonth || `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+      const alerts: BudgetAlert[] = [];
+
+      for (const budget of budgets) {
+        if (budget.year_month === targetYearMonth) {
+          const spent = getBudgetSpending(budget.year_month, budget.category);
+          const remaining = budget.amount - spent;
+          const percentage = budget.amount > 0 ? (spent / budget.amount) * 100 : 100;
+
+          let status: 'ok' | 'warning' | 'exceeded' = 'ok';
+          if (percentage >= 100) {
+            status = 'exceeded';
+          } else if (percentage >= 80) {
+            status = 'warning';
+          }
+
+          alerts.push({
+            budget,
+            spent,
+            remaining,
+            percentage,
+            status,
+          });
         }
-        
-        alerts.push({
-          budget,
-          spent,
-          remaining,
-          percentage,
-          status,
-        });
       }
+
+      return alerts;
+    } catch (error) {
+      console.error('[IPC Error] get-budget-alerts:', error);
+      throw error;
     }
-    
-    return alerts;
   });
 
   ipcMain.handle('get-tags', async (_, id: string): Promise<string[]> => {
-    return getTransactionTags(id);
+    try {
+      return getTransactionTags(id);
+    } catch (error) {
+      console.error('[IPC Error] get-tags:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('add-tag', async (_, id: string, tag: string): Promise<boolean> => {
-    return addTransactionTag(id, tag);
+    try {
+      return addTransactionTag(id, tag);
+    } catch (error) {
+      console.error('[IPC Error] add-tag:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('remove-tag', async (_, id: string, tag: string): Promise<boolean> => {
-    return removeTransactionTag(id, tag);
+    try {
+      return removeTransactionTag(id, tag);
+    } catch (error) {
+      console.error('[IPC Error] remove-tag:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-monthly-trend', async (_, months: number = 12): Promise<{
@@ -1330,139 +1430,234 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     currentMonth: string;
     previousMonth: string;
   }> => {
-    const now = new Date();
-    const targetYear = now.getFullYear();
-    const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-    
-    // Get data for the last N months
-    const monthlyRows = queryAll(
-      `
-      SELECT
-        strftime('%Y-%m', date) as month,
-        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
-      FROM transactions
-      WHERE type IN ('expense', 'income')
-        AND date >= date('now', '-${months} months')
-      GROUP BY month
-      ORDER BY month ASC
-      `
-    );
+    try {
+      const now = new Date();
+      const targetYear = now.getFullYear();
+      const currentMonth = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 
-    const data = monthlyRows.map((row, index) => {
-      const expense = Number(row.expense ?? 0);
-      const income = Number(row.income ?? 0);
-      let expenseChange: number | null = null;
-      let incomeChange: number | null = null;
+      // Get data for the last N months
+      const monthlyRows = queryAll(
+        `
+        SELECT
+          strftime('%Y-%m', date) as month,
+          SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense,
+          SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income
+        FROM transactions
+        WHERE type IN ('expense', 'income')
+          AND date >= date('now', '-${months} months')
+        GROUP BY month
+        ORDER BY month ASC
+        `
+      );
 
-      if (index > 0) {
-        const prevRow = monthlyRows[index - 1];
-        const prevExpense = Number(prevRow.expense ?? 0);
-        const prevIncome = Number(prevRow.income ?? 0);
-        
-        if (prevExpense > 0) {
-          expenseChange = ((expense - prevExpense) / prevExpense) * 100;
+      const data = monthlyRows.map((row, index) => {
+        const expense = Number(row.expense ?? 0);
+        const income = Number(row.income ?? 0);
+        let expenseChange: number | null = null;
+        let incomeChange: number | null = null;
+
+        if (index > 0) {
+          const prevRow = monthlyRows[index - 1];
+          const prevExpense = Number(prevRow.expense ?? 0);
+          const prevIncome = Number(prevRow.income ?? 0);
+
+          if (prevExpense > 0) {
+            expenseChange = ((expense - prevExpense) / prevExpense) * 100;
+          }
+          if (prevIncome > 0) {
+            incomeChange = ((income - prevIncome) / prevIncome) * 100;
+          }
         }
-        if (prevIncome > 0) {
-          incomeChange = ((income - prevIncome) / prevIncome) * 100;
-        }
-      }
+
+        return {
+          month: String(row.month ?? ''),
+          expense,
+          income,
+          expenseChange,
+          incomeChange,
+        };
+      });
+
+      // Calculate previous month for comparison
+      const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+      const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
 
       return {
-        month: String(row.month ?? ''),
-        expense,
-        income,
-        expenseChange,
-        incomeChange,
+        data,
+        currentMonth,
+        previousMonth,
       };
-    });
-
-    // Calculate previous month for comparison
-    const prevDate = new Date(now.getFullYear(), now.getMonth() - 1, 1);
-    const previousMonth = `${prevDate.getFullYear()}-${String(prevDate.getMonth() + 1).padStart(2, '0')}`;
-
-    return {
-      data,
-      currentMonth,
-      previousMonth,
-    };
+    } catch (error) {
+      console.error('[IPC Error] get-monthly-trend:', error);
+      throw error;
+    }
   });
 
   // Member handlers
   ipcMain.handle('get-members', async (): Promise<Member[]> => {
-    return getMembers();
+    try {
+      return getMembers();
+    } catch (error) {
+      console.error('[IPC Error] get-members:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('add-member', async (_, id: string, name: string, color: string): Promise<void> => {
-    addMember(id, name, color);
+    try {
+      addMember(id, name, color);
+    } catch (error) {
+      console.error('[IPC Error] add-member:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('update-member', async (_, id: string, name: string, color: string): Promise<void> => {
-    updateMember(id, name, color);
+    try {
+      updateMember(id, name, color);
+    } catch (error) {
+      console.error('[IPC Error] update-member:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('delete-member', async (_, id: string): Promise<void> => {
-    deleteMember(id);
+    try {
+      deleteMember(id);
+    } catch (error) {
+      console.error('[IPC Error] delete-member:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('set-transaction-member', async (_, transactionId: string, memberId: string | null): Promise<void> => {
-    setTransactionMember(transactionId, memberId);
+    try {
+      setTransactionMember(transactionId, memberId);
+    } catch (error) {
+      console.error('[IPC Error] set-transaction-member:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-member-summary', async (_, year: number, month?: number): Promise<{ memberId: string; memberName: string; memberColor: string; total: number }[]> => {
-    return getMemberSpendingSummary(year, month);
+    try {
+      return getMemberSpendingSummary(year, month);
+    } catch (error) {
+      console.error('[IPC Error] get-member-summary:', error);
+      throw error;
+    }
   });
 
   // Account handlers
   ipcMain.handle('get-accounts', async (): Promise<Account[]> => {
-    return getAccounts();
+    try {
+      return getAccounts();
+    } catch (error) {
+      console.error('[IPC Error] get-accounts:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('add-account', async (_, id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> => {
-    addAccount(id, name, type, balance, color);
+    try {
+      addAccount(id, name, type, balance, color);
+    } catch (error) {
+      console.error('[IPC Error] add-account:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('update-account', async (_, id: string, name: string, type: Account['type'], balance: number, color: string): Promise<void> => {
-    updateAccount(id, name, type, balance, color);
+    try {
+      updateAccount(id, name, type, balance, color);
+    } catch (error) {
+      console.error('[IPC Error] update-account:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('delete-account', async (_, id: string): Promise<void> => {
-    deleteAccount(id);
+    try {
+      deleteAccount(id);
+    } catch (error) {
+      console.error('[IPC Error] delete-account:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('set-transaction-account', async (_, transactionId: string, accountId: string | null): Promise<void> => {
-    setTransactionAccount(transactionId, accountId);
+    try {
+      setTransactionAccount(transactionId, accountId);
+    } catch (error) {
+      console.error('[IPC Error] set-transaction-account:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-account-summary', async (_, year: number, month?: number): Promise<AccountSummary[]> => {
-    return getAccountSpendingSummary(year, month);
+    try {
+      return getAccountSpendingSummary(year, month);
+    } catch (error) {
+      console.error('[IPC Error] get-account-summary:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('update-account-balance', async (_, id: string, balance: number): Promise<void> => {
-    updateAccountBalance(id, balance);
+    try {
+      updateAccountBalance(id, balance);
+    } catch (error) {
+      console.error('[IPC Error] update-account-balance:', error);
+      throw error;
+    }
   });
 
   // Phase 1: Triage Rules handlers
   ipcMain.handle('apply-triage-rules', async (_, transactions: Transaction[]) => {
-    return applyTriageRules(transactions);
+    try {
+      return applyTriageRules(transactions);
+    } catch (error) {
+      console.error('[IPC Error] apply-triage-rules:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('auto-apply-triage-rules', async (_, transactions: Transaction[]) => {
-    return autoApplyTriageRules(transactions);
+    try {
+      return autoApplyTriageRules(transactions);
+    } catch (error) {
+      console.error('[IPC Error] auto-apply-triage-rules:', error);
+      throw error;
+    }
   });
 
   // Batch Assignment Prompt handlers
   ipcMain.handle('check-similar-assignments', async (_, transaction: Transaction, memberId: string, threshold?: number) => {
-    return checkSimilarAssignments(transaction, memberId, threshold ?? 2);
+    try {
+      return checkSimilarAssignments(transaction, memberId, threshold ?? 2);
+    } catch (error) {
+      console.error('[IPC Error] check-similar-assignments:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('batch-assign-similar', async (_, transaction: Transaction, memberId: string) => {
-    return batchAssignSimilar(transaction, memberId);
+    try {
+      return batchAssignSimilar(transaction, memberId);
+    } catch (error) {
+      console.error('[IPC Error] batch-assign-similar:', error);
+      throw error;
+    }
   });
 
   // Email account handlers
   ipcMain.handle('get-email-accounts', async (): Promise<EmailAccount[]> => {
-    return getEmailAccounts();
+    try {
+      return getEmailAccounts();
+    } catch (error) {
+      console.error('[IPC Error] get-email-accounts:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('add-email-account', async (
@@ -1476,29 +1671,59 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     username: string,
     password: string
   ): Promise<void> => {
-    addEmailAccount(id, email, imapHost, imapPort, smtpHost, smtpPort, username, password);
+    try {
+      addEmailAccount(id, email, imapHost, imapPort, smtpHost, smtpPort, username, password);
+    } catch (error) {
+      console.error('[IPC Error] add-email-account:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('delete-email-account', async (_, id: string): Promise<void> => {
-    deleteEmailAccount(id);
+    try {
+      deleteEmailAccount(id);
+    } catch (error) {
+      console.error('[IPC Error] delete-email-account:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-email-messages', async (_, accountId: string, limit?: number): Promise<EmailMessage[]> => {
-    return getEmailMessages(accountId, limit ?? 50);
+    try {
+      return getEmailMessages(accountId, limit ?? 50);
+    } catch (error) {
+      console.error('[IPC Error] get-email-messages:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('sync-emails', async (_, accountId: string) => {
-    // Dynamic import to avoid issues
-    const { syncEmailAccount } = await import('./email');
-    return syncEmailAccount({ accountId });
+    try {
+      // Dynamic import to avoid issues
+      const { syncEmailAccount } = await import('./email');
+      return syncEmailAccount({ accountId });
+    } catch (error) {
+      console.error('[IPC Error] sync-emails:', error);
+      throw error;
+    }
   });
 
   // Source Coverage IPC handlers
   ipcMain.handle('get-source-coverage', async (_, year: number) => {
-    return getSourceCoverage(year);
+    try {
+      return getSourceCoverage(year);
+    } catch (error) {
+      console.error('[IPC Error] get-source-coverage:', error);
+      throw error;
+    }
   });
 
   ipcMain.handle('get-last-import-by-source', async () => {
-    return getLastImportBySource();
+    try {
+      return getLastImportBySource();
+    } catch (error) {
+      console.error('[IPC Error] get-last-import-by-source:', error);
+      throw error;
+    }
   });
 }
