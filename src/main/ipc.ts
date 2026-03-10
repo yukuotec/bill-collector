@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero, getRecurringTransactions, getActiveRecurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction, generateRecurringTransactions } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -1762,6 +1762,102 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return getMarkedAsZero(year);
     } catch (error) {
       console.error('[IPC Error] get-marked-as-zero:', error);
+      throw error;
+    }
+  });
+
+  // Recurring Transaction handlers
+  ipcMain.handle('get-recurring-transactions', async () => {
+    try {
+      return getRecurringTransactions();
+    } catch (error) {
+      console.error('[IPC Error] get-recurring-transactions:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('add-recurring-transaction', async (_, data: {
+    id: string;
+    name: string;
+    amount: number;
+    type: 'expense' | 'income';
+    category: string;
+    counterparty: string;
+    memberId: string | null;
+    accountId: string | null;
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    startDate: string;
+    endDate: string | null;
+    dayOfMonth: number | null;
+    dayOfWeek: number | null;
+  }) => {
+    try {
+      addRecurringTransaction(
+        data.id, data.name, data.amount, data.type, data.category,
+        data.counterparty, data.memberId, data.accountId, data.frequency,
+        data.startDate, data.endDate, data.dayOfMonth, data.dayOfWeek
+      );
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] add-recurring-transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('update-recurring-transaction', async (_, data: {
+    id: string;
+    name: string;
+    amount: number;
+    type: 'expense' | 'income';
+    category: string;
+    counterparty: string;
+    memberId: string | null;
+    accountId: string | null;
+    frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+    startDate: string;
+    endDate: string | null;
+    dayOfMonth: number | null;
+    dayOfWeek: number | null;
+    isActive: boolean;
+  }) => {
+    try {
+      updateRecurringTransaction(
+        data.id, data.name, data.amount, data.type, data.category,
+        data.counterparty, data.memberId, data.accountId, data.frequency,
+        data.startDate, data.endDate, data.dayOfMonth, data.dayOfWeek, data.isActive
+      );
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] update-recurring-transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('delete-recurring-transaction', async (_, id: string) => {
+    try {
+      deleteRecurringTransaction(id);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] delete-recurring-transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('toggle-recurring-transaction', async (_, id: string, isActive: boolean) => {
+    try {
+      toggleRecurringTransaction(id, isActive);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] toggle-recurring-transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('generate-recurring-transactions', async () => {
+    try {
+      return generateRecurringTransactions();
+    } catch (error) {
+      console.error('[IPC Error] generate-recurring-transactions:', error);
       throw error;
     }
   });

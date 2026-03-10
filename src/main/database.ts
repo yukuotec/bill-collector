@@ -246,6 +246,32 @@ function ensureSchema(): void {
 
   database.run('CREATE INDEX IF NOT EXISTS idx_transactions_account_id ON transactions(account_id)');
 
+  // Recurring transactions table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS recurring_transactions (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL,
+      category TEXT DEFAULT '其他',
+      counterparty TEXT,
+      member_id TEXT,
+      account_id TEXT,
+      frequency TEXT NOT NULL,
+      start_date TEXT NOT NULL,
+      end_date TEXT,
+      day_of_month INTEGER,
+      day_of_week INTEGER,
+      is_active INTEGER DEFAULT 1,
+      last_generated_date TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_recurring_is_active ON recurring_transactions(is_active)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_recurring_frequency ON recurring_transactions(frequency)');
+
   const now = new Date().toISOString();
   database.run(
     `
@@ -1647,4 +1673,227 @@ export function getMarkedAsZero(year: number): MarkedAsZero[] {
   }
   stmt.free();
   return results;
+}
+
+// ============== Recurring Transaction Functions ==============
+
+export interface RecurringTransaction {
+  id: string;
+  name: string;
+  amount: number;
+  type: 'expense' | 'income';
+  category: string;
+  counterparty?: string;
+  member_id?: string;
+  account_id?: string;
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly';
+  start_date: string;
+  end_date?: string;
+  day_of_month?: number;
+  day_of_week?: number;
+  is_active: boolean;
+  last_generated_date?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getRecurringTransactions(): RecurringTransaction[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM recurring_transactions ORDER BY name ASC');
+  const results: RecurringTransaction[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as unknown as RecurringTransaction;
+    results.push({
+      ...row,
+      is_active: Boolean(row.is_active),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export function getActiveRecurringTransactions(): RecurringTransaction[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM recurring_transactions WHERE is_active = 1 ORDER BY name ASC');
+  const results: RecurringTransaction[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as unknown as RecurringTransaction;
+    results.push({
+      ...row,
+      is_active: Boolean(row.is_active),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export function addRecurringTransaction(
+  id: string,
+  name: string,
+  amount: number,
+  type: 'expense' | 'income',
+  category: string,
+  counterparty: string,
+  memberId: string | null,
+  accountId: string | null,
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly',
+  startDate: string,
+  endDate: string | null,
+  dayOfMonth: number | null,
+  dayOfWeek: number | null
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT INTO recurring_transactions (
+      id, name, amount, type, category, counterparty, member_id, account_id,
+      frequency, start_date, end_date, day_of_month, day_of_week, is_active,
+      created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+    [
+      id, name, amount, type, category, counterparty || null, memberId, accountId,
+      frequency, startDate, endDate, dayOfMonth, dayOfWeek, now, now
+    ]
+  );
+  saveDatabase();
+}
+
+export function updateRecurringTransaction(
+  id: string,
+  name: string,
+  amount: number,
+  type: 'expense' | 'income',
+  category: string,
+  counterparty: string,
+  memberId: string | null,
+  accountId: string | null,
+  frequency: 'daily' | 'weekly' | 'monthly' | 'yearly',
+  startDate: string,
+  endDate: string | null,
+  dayOfMonth: number | null,
+  dayOfWeek: number | null,
+  isActive: boolean
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `UPDATE recurring_transactions SET
+      name = ?, amount = ?, type = ?, category = ?, counterparty = ?,
+      member_id = ?, account_id = ?, frequency = ?, start_date = ?, end_date = ?,
+      day_of_month = ?, day_of_week = ?, is_active = ?, updated_at = ?
+    WHERE id = ?`,
+    [
+      name, amount, type, category, counterparty || null, memberId, accountId,
+      frequency, startDate, endDate, dayOfMonth, dayOfWeek, isActive ? 1 : 0, now, id
+    ]
+  );
+  saveDatabase();
+}
+
+export function deleteRecurringTransaction(id: string): void {
+  const database = getDatabase();
+  database.run('DELETE FROM recurring_transactions WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function toggleRecurringTransaction(id: string, isActive: boolean): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'UPDATE recurring_transactions SET is_active = ?, updated_at = ? WHERE id = ?',
+    [isActive ? 1 : 0, now, id]
+  );
+  saveDatabase();
+}
+
+export function updateLastGeneratedDate(id: string, date: string): void {
+  const database = getDatabase();
+  database.run(
+    'UPDATE recurring_transactions SET last_generated_date = ? WHERE id = ?',
+    [date, id]
+  );
+  saveDatabase();
+}
+
+/**
+ * Generate transactions from recurring transactions that are due
+ * Returns the number of transactions generated
+ */
+export function generateRecurringTransactions(): number {
+  const database = getDatabase();
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  const recurring = getActiveRecurringTransactions();
+  let generated = 0;
+
+  for (const rec of recurring) {
+    // Skip if hasn't started yet
+    if (rec.start_date > today) continue;
+
+    // Skip if ended
+    if (rec.end_date && rec.end_date < today) continue;
+
+    // Determine if we should generate for today
+    let shouldGenerate = false;
+
+    switch (rec.frequency) {
+      case 'daily':
+        shouldGenerate = true;
+        break;
+      case 'weekly':
+        shouldGenerate = rec.day_of_week === now.getDay();
+        break;
+      case 'monthly':
+        shouldGenerate = rec.day_of_month === now.getDate() ||
+          (rec.day_of_month === null && now.getDate() === 1);
+        break;
+      case 'yearly':
+        // Yearly on specific month and day
+        const startDate = new Date(rec.start_date);
+        shouldGenerate = now.getMonth() === startDate.getMonth() &&
+          now.getDate() === startDate.getDate();
+        break;
+    }
+
+    if (!shouldGenerate) continue;
+
+    // Check if already generated today
+    if (rec.last_generated_date === today) continue;
+
+    // Generate the transaction
+    const txnId = `rec-${rec.id}-${today}`;
+    const txnTime = new Date().toISOString();
+
+    try {
+      database.run(
+        `INSERT INTO transactions (
+          id, source, date, amount, type, category, counterparty,
+          member_id, account_id, is_duplicate, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)`,
+        [
+          txnId,
+          'manual',
+          today,
+          rec.amount,
+          rec.type,
+          rec.category,
+          rec.counterparty || rec.name,
+          rec.member_id,
+          rec.account_id,
+          txnTime,
+          txnTime
+        ]
+      );
+      updateLastGeneratedDate(rec.id, today);
+      generated++;
+    } catch (error) {
+      console.error(`Failed to generate recurring transaction ${rec.id}:`, error);
+    }
+  }
+
+  if (generated > 0) {
+    saveDatabase();
+  }
+
+  return generated;
 }

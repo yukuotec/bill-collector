@@ -116,6 +116,13 @@ const webAPI = {
   unmarkAsZero: () => Promise.resolve(true),
   isMarkedAsZero: () => Promise.resolve(false),
   getMarkedAsZero: () => Promise.resolve([]),
+  // Recurring Transaction APIs (web fallback)
+  getRecurringTransactions: () => Promise.resolve([]),
+  addRecurringTransaction: () => Promise.resolve(true),
+  updateRecurringTransaction: () => Promise.resolve(true),
+  deleteRecurringTransaction: () => Promise.resolve(true),
+  toggleRecurringTransaction: () => Promise.resolve(true),
+  generateRecurringTransactions: () => Promise.resolve(0),
 };
 
 const electronAPI = {
@@ -236,6 +243,14 @@ const electronAPI = {
 
   getMarkedAsZero: (year: number): Promise<Array<{ source: string; month: string; markedAt: string }>> =>
     ipcRenderer.invoke('get-marked-as-zero', year),
+
+  // Recurring Transaction APIs
+  getRecurringTransactions: () => ipcRenderer.invoke('get-recurring-transactions'),
+  addRecurringTransaction: (data: object) => ipcRenderer.invoke('add-recurring-transaction', data),
+  updateRecurringTransaction: (data: object) => ipcRenderer.invoke('update-recurring-transaction', data),
+  deleteRecurringTransaction: (id: string) => ipcRenderer.invoke('delete-recurring-transaction', id),
+  toggleRecurringTransaction: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-recurring-transaction', id, isActive),
+  generateRecurringTransactions: () => ipcRenderer.invoke('generate-recurring-transactions'),
 };
 
 // Export the appropriate API based on environment
