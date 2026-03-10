@@ -106,6 +106,14 @@ if (typeof window.electronAPI === 'undefined' && !(window as any).__IS_ELECTRON)
     createTransaction: () => Promise.resolve({ id: 'demo-txn', success: true }),
     getMerchantHistory: () => Promise.resolve([]),
     getCategories: () => Promise.resolve(['餐饮', '交通', '购物', '住房', '医疗', '娱乐', '通讯', '其他']),
+
+    // Source Coverage
+    getSourceCoverage: () => Promise.resolve([]),
+    getLastImportBySource: () => Promise.resolve([]),
+    markAsZero: () => Promise.resolve(true),
+    unmarkAsZero: () => Promise.resolve(true),
+    isMarkedAsZero: () => Promise.resolve(false),
+    getMarkedAsZero: () => Promise.resolve([]),
   };
 }
 

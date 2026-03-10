@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -1723,6 +1723,45 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return getLastImportBySource();
     } catch (error) {
       console.error('[IPC Error] get-last-import-by-source:', error);
+      throw error;
+    }
+  });
+
+  // Mark-as-zero handlers for Source Coverage
+  ipcMain.handle('mark-as-zero', async (_, source: string, month: string) => {
+    try {
+      markAsZero(source, month);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] mark-as-zero:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('unmark-as-zero', async (_, source: string, month: string) => {
+    try {
+      unmarkAsZero(source, month);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] unmark-as-zero:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('is-marked-as-zero', async (_, source: string, month: string) => {
+    try {
+      return isMarkedAsZero(source, month);
+    } catch (error) {
+      console.error('[IPC Error] is-marked-as-zero:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-marked-as-zero', async (_, year: number) => {
+    try {
+      return getMarkedAsZero(year);
+    } catch (error) {
+      console.error('[IPC Error] get-marked-as-zero:', error);
       throw error;
     }
   });

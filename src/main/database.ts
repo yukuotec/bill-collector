@@ -1555,3 +1555,96 @@ export function getLastImportBySource(): Array<{ source: string; lastDate: strin
   stmt.free();
   return results;
 }
+
+// ============== Mark As Zero Functions ==============
+
+export interface MarkedAsZero {
+  source: string;
+  month: string;
+  markedAt: string;
+}
+
+/**
+ * Create the source_coverage_zeros table if it doesn't exist
+ */
+export function ensureSourceCoverageZerosTable(): void {
+  const database = getDatabase();
+  database.run(`
+    CREATE TABLE IF NOT EXISTS source_coverage_zeros (
+      source TEXT NOT NULL,
+      month TEXT NOT NULL,
+      marked_at TEXT NOT NULL,
+      PRIMARY KEY (source, month)
+    )
+  `);
+}
+
+/**
+ * Mark a source-month as having zero transactions (no data)
+ */
+export function markAsZero(source: string, month: string): void {
+  ensureSourceCoverageZerosTable();
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT OR REPLACE INTO source_coverage_zeros (source, month, marked_at) VALUES (?, ?, ?)`,
+    [source, month, now]
+  );
+  saveDatabase();
+}
+
+/**
+ * Unmark a source-month (remove the zero marking)
+ */
+export function unmarkAsZero(source: string, month: string): void {
+  ensureSourceCoverageZerosTable();
+  const database = getDatabase();
+  database.run(
+    `DELETE FROM source_coverage_zeros WHERE source = ? AND month = ?`,
+    [source, month]
+  );
+  saveDatabase();
+}
+
+/**
+ * Check if a source-month is marked as zero
+ */
+export function isMarkedAsZero(source: string, month: string): boolean {
+  ensureSourceCoverageZerosTable();
+  const database = getDatabase();
+  const stmt = database.prepare(
+    `SELECT COUNT(*) as count FROM source_coverage_zeros WHERE source = ? AND month = ?`
+  );
+  stmt.bind([source, month]);
+  let result = false;
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { count: number };
+    result = row.count > 0;
+  }
+  stmt.free();
+  return result;
+}
+
+/**
+ * Get all source-months marked as zero for a given year
+ */
+export function getMarkedAsZero(year: number): MarkedAsZero[] {
+  ensureSourceCoverageZerosTable();
+  const database = getDatabase();
+  const stmt = database.prepare(
+    `SELECT source, month, marked_at FROM source_coverage_zeros WHERE month LIKE ? ORDER BY month DESC, source`
+  );
+  stmt.bind([`${year}-%`]);
+
+  const results: MarkedAsZero[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as { source: string; month: string; marked_at: string };
+    results.push({
+      source: row.source,
+      month: row.month,
+      markedAt: row.marked_at,
+    });
+  }
+  stmt.free();
+  return results;
+}

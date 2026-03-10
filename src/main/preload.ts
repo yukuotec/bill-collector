@@ -111,6 +111,11 @@ const webAPI = {
   // Source Coverage APIs (web fallback)
   getSourceCoverage: () => Promise.resolve([]),
   getLastImportBySource: () => Promise.resolve([]),
+  // Mark-as-zero APIs (web fallback)
+  markAsZero: () => Promise.resolve(true),
+  unmarkAsZero: () => Promise.resolve(true),
+  isMarkedAsZero: () => Promise.resolve(false),
+  getMarkedAsZero: () => Promise.resolve([]),
 };
 
 const electronAPI = {
@@ -218,6 +223,19 @@ const electronAPI = {
 
   getLastImportBySource: (): Promise<Array<{ source: string; lastDate: string | null }>> =>
     ipcRenderer.invoke('get-last-import-by-source'),
+
+  // Mark-as-zero APIs
+  markAsZero: (source: string, month: string): Promise<boolean> =>
+    ipcRenderer.invoke('mark-as-zero', source, month),
+
+  unmarkAsZero: (source: string, month: string): Promise<boolean> =>
+    ipcRenderer.invoke('unmark-as-zero', source, month),
+
+  isMarkedAsZero: (source: string, month: string): Promise<boolean> =>
+    ipcRenderer.invoke('is-marked-as-zero', source, month),
+
+  getMarkedAsZero: (year: number): Promise<Array<{ source: string; month: string; markedAt: string }>> =>
+    ipcRenderer.invoke('get-marked-as-zero', year),
 };
 
 // Export the appropriate API based on environment

@@ -12,6 +12,12 @@ interface LastImportData {
   lastDate: string | null;
 }
 
+interface MarkedAsZeroData {
+  source: string;
+  month: string;
+  markedAt: string;
+}
+
 // Source-specific import hints
 const SOURCE_IMPORT_HINTS: Record<SourceId, string> = {
   alipay: '访问支付宝网页版 → 交易记录 → 下载账单',
@@ -34,6 +40,7 @@ export default function SourceCoverage() {
   const [year, setYear] = useState<number>(new Date().getFullYear());
   const [coverage, setCoverage] = useState<CoverageData[]>([]);
   const [lastImports, setLastImports] = useState<LastImportData[]>([]);
+  const [markedAsZero, setMarkedAsZero] = useState<MarkedAsZeroData[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedCell, setSelectedCell] = useState<{ source: SourceId; month: string } | null>(null);
   const [showConfirmZero, setShowConfirmZero] = useState(false);
@@ -45,12 +52,14 @@ export default function SourceCoverage() {
   const loadData = async () => {
     setLoading(true);
     try {
-      const [coverageData, lastImportData] = await Promise.all([
+      const [coverageData, lastImportData, markedZeroData] = await Promise.all([
         window.electronAPI.getSourceCoverage(year),
         window.electronAPI.getLastImportBySource(),
+        window.electronAPI.getMarkedAsZero(year),
       ]);
       setCoverage(coverageData);
       setLastImports(lastImportData);
+      setMarkedAsZero(markedZeroData);
     } catch (error) {
       console.error('Failed to load source coverage:', error);
     } finally {
@@ -68,6 +77,11 @@ export default function SourceCoverage() {
   const getCount = (sourceId: string, month: string): number | null => {
     const item = coverage.find(c => c.source === sourceId && c.month === month);
     return item ? item.count : null;
+  };
+
+  // Check if a source-month is marked as zero
+  const isMarkedZero = (sourceId: string, month: string): boolean => {
+    return markedAsZero.some(m => m.source === sourceId && m.month === month);
   };
 
   // Check if a month is the current month
@@ -104,8 +118,13 @@ export default function SourceCoverage() {
     if (isFutureMonth(month)) return;
 
     const count = getCount(sourceId, month);
-    if (count === null) {
-      // Show options for NA cells
+    const marked = isMarkedZero(sourceId, month);
+
+    if (count === null && !marked) {
+      // Show options for NA cells that are not marked as zero
+      setSelectedCell({ source: sourceId, month });
+    } else if (marked) {
+      // Show unmark option for marked-as-zero cells
       setSelectedCell({ source: sourceId, month });
     } else {
       // Navigate to transactions with source and month filter
@@ -122,18 +141,37 @@ export default function SourceCoverage() {
 
   const handleMarkZeroClick = async () => {
     if (selectedCell) {
-      // In a real implementation, this would call an IPC method to mark as zero
-      // For now, we just show a confirmation
       setShowConfirmZero(true);
     }
   };
 
-  const confirmMarkZero = () => {
-    // TODO: Implement actual mark as zero functionality
-    // This would require a new database table to track explicit "no data" months
-    alert(`已将 ${selectedCell?.month} 的 ${getSourceName(selectedCell?.source as SourceId)} 标记为无数据`);
-    setShowConfirmZero(false);
-    setSelectedCell(null);
+  const confirmMarkZero = async () => {
+    if (!selectedCell) return;
+
+    try {
+      await window.electronAPI.markAsZero(selectedCell.source, selectedCell.month);
+      // Refresh data to show updated state
+      await loadData();
+      setShowConfirmZero(false);
+      setSelectedCell(null);
+    } catch (error) {
+      console.error('Failed to mark as zero:', error);
+      alert('标记失败，请重试');
+    }
+  };
+
+  const handleUnmarkZero = async () => {
+    if (!selectedCell) return;
+
+    try {
+      await window.electronAPI.unmarkAsZero(selectedCell.source, selectedCell.month);
+      // Refresh data to show updated state
+      await loadData();
+      setSelectedCell(null);
+    } catch (error) {
+      console.error('Failed to unmark as zero:', error);
+      alert('取消标记失败，请重试');
+    }
   };
 
   if (loading) {
@@ -203,14 +241,16 @@ export default function SourceCoverage() {
                 </td>
                 {months.map((month) => {
                   const count = getCount(source.id, month);
+                  const marked = isMarkedZero(source.id, month);
                   const isCurrent = isCurrentMonth(month);
                   const isFuture = isFutureMonth(month);
                   const cellClass = [
                     'coverage-cell',
-                    count === null ? 'na' : 'has-data',
+                    count === null && !marked ? 'na' : count !== null ? 'has-data' : 'marked-zero',
                     isCurrent ? 'current' : '',
                     count === 0 ? 'zero' : '',
                     isFuture ? 'future' : '',
+                    marked ? 'marked' : '',
                   ].join(' ');
 
                   return (
@@ -218,10 +258,12 @@ export default function SourceCoverage() {
                       key={month}
                       className={cellClass}
                       onClick={() => !isFuture && handleCellClick(source.id, month)}
-                      title={isFuture ? '未来月份' : count === null ? '点击导入或标记' : `${count} 条交易，点击查看详情`}
+                      title={isFuture ? '未来月份' : marked ? '已标记为无数据，点击取消标记' : count === null ? '点击导入或标记' : `${count} 条交易，点击查看详情`}
                     >
                       {isFuture ? (
                         <span className="future-marker">-</span>
+                      ) : marked ? (
+                        <span className="zero-marker">✓</span>
                       ) : count === null ? (
                         <span className="na-marker">NA</span>
                       ) : (
@@ -245,6 +287,10 @@ export default function SourceCoverage() {
           <span>已导入（数字为交易数）</span>
         </div>
         <div className="legend-item">
+          <span className="legend-cell marked">✓</span>
+          <span>标记为无数据</span>
+        </div>
+        <div className="legend-item">
           <span className="legend-cell na">NA</span>
           <span>未导入（点击选择）</span>
         </div>
@@ -259,7 +305,7 @@ export default function SourceCoverage() {
       </div>
 
       {/* Action Modal for NA cells */}
-      {selectedCell && !showConfirmZero && (
+      {selectedCell && !showConfirmZero && !isMarkedZero(selectedCell.source, selectedCell.month) && (
         <div className="modal-overlay" onClick={() => setSelectedCell(null)}>
           <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <h3>
@@ -275,6 +321,26 @@ export default function SourceCoverage() {
               </button>
               <button className="btn btn-text" onClick={() => setSelectedCell(null)}>
                 取消
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Action Modal for marked-as-zero cells */}
+      {selectedCell && !showConfirmZero && isMarkedZero(selectedCell.source, selectedCell.month) && (
+        <div className="modal-overlay" onClick={() => setSelectedCell(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <h3>
+              {SOURCE_ICONS[selectedCell.source]} {getSourceName(selectedCell.source)} - {selectedCell.month}
+            </h3>
+            <p>该月份已被标记为无数据</p>
+            <div className="modal-actions">
+              <button className="btn btn-primary" onClick={handleUnmarkZero}>
+                取消标记
+              </button>
+              <button className="btn btn-text" onClick={() => setSelectedCell(null)}>
+                关闭
               </button>
             </div>
           </div>
@@ -306,6 +372,7 @@ export default function SourceCoverage() {
         <h4>💡 提示</h4>
         <ul>
           <li>点击 <strong>NA</strong> 单元格可选择导入或标记为无数据</li>
+          <li>点击 <strong>✓</strong> 单元格可取消"无数据"标记</li>
           <li>点击数字单元格可查看该月份的交易明细</li>
           <li>建议每月定期导入各平台账单，保持数据完整</li>
         </ul>
