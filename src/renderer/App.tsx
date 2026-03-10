@@ -14,6 +14,7 @@ import SourceCoverage from './pages/SourceCoverage';
 import Recurring from './pages/Recurring';
 import Investments from './pages/Investments';
 import SavingsGoals from './pages/SavingsGoals';
+import Export from './pages/Export';
 
 declare global {
   interface Window {
@@ -152,7 +153,7 @@ const navItems = [
   { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'accounts', label: '账户', icon: '💳' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
-  { page: 'assign', label: '分配交易', icon: '📤' },
+  { page: 'export', label: '导出', icon: '📤' },
   { page: 'import', label: '导入', icon: '📥' },
   { page: 'source-coverage', label: '数据收集', icon: '📆' },
   { page: 'transactions', label: '交易记录', icon: '📋' },
@@ -226,6 +227,7 @@ export default function App() {
         {currentPage === 'recurring' && <Recurring />}
         {currentPage === 'investments' && <Investments />}
         {currentPage === 'savings' && <SavingsGoals />}
+        {currentPage === 'export' && <Export />}
       </main>
     </div>
   );
