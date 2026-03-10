@@ -6,14 +6,14 @@ export interface DrilldownQuery {
   drill?: boolean;
 }
 
-export type AppPage = 'dashboard' | 'budgets' | 'accounts' | 'members' | 'import' | 'transactions' | 'assign' | 'quick-add' | 'email-settings' | 'source-coverage' | 'recurring';
+export type AppPage = 'dashboard' | 'budgets' | 'accounts' | 'members' | 'import' | 'transactions' | 'assign' | 'quick-add' | 'email-settings' | 'source-coverage' | 'recurring' | 'investments';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 export function parseHashLocation(hash: string): { page: AppPage; search: string } {
   const raw = hash.startsWith('#') ? hash.slice(1) : hash;
   const [path, query = ''] = raw.split('?');
-  const validPages: AppPage[] = ['dashboard', 'budgets', 'accounts', 'members', 'import', 'transactions', 'assign', 'quick-add', 'email-settings', 'source-coverage', 'recurring'];
+  const validPages: AppPage[] = ['dashboard', 'budgets', 'accounts', 'members', 'import', 'transactions', 'assign', 'quick-add', 'email-settings', 'source-coverage', 'recurring', 'investments'];
   const page: AppPage = validPages.includes(path as AppPage) ? (path as AppPage) : 'dashboard';
   return { page, search: query ? `?${query}` : '' };
 }

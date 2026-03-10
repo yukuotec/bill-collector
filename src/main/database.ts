@@ -272,6 +272,46 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_recurring_is_active ON recurring_transactions(is_active)');
   database.run('CREATE INDEX IF NOT EXISTS idx_recurring_frequency ON recurring_transactions(frequency)');
 
+  // Investment accounts table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS investment_accounts (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL,
+      symbol TEXT,
+      shares REAL DEFAULT 0,
+      cost_basis REAL DEFAULT 0,
+      current_price REAL DEFAULT 0,
+      currency TEXT DEFAULT 'CNY',
+      broker TEXT,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_investment_type ON investment_accounts(type)');
+
+  // Investment transactions table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS investment_transactions (
+      id TEXT PRIMARY KEY,
+      account_id TEXT NOT NULL,
+      type TEXT NOT NULL,
+      shares REAL NOT NULL,
+      price REAL NOT NULL,
+      amount REAL NOT NULL,
+      fee REAL DEFAULT 0,
+      date TEXT NOT NULL,
+      notes TEXT,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (account_id) REFERENCES investment_accounts(id) ON DELETE CASCADE
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_investment_txn_account ON investment_transactions(account_id)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_investment_txn_date ON investment_transactions(date)');
+
   const now = new Date().toISOString();
   database.run(
     `
@@ -1896,4 +1936,211 @@ export function generateRecurringTransactions(): number {
   }
 
   return generated;
+}
+
+// ============== Investment Account Functions ==============
+
+export interface InvestmentAccount {
+  id: string;
+  name: string;
+  type: 'stock' | 'fund' | 'bond' | 'crypto';
+  symbol?: string;
+  shares: number;
+  cost_basis: number;
+  current_price: number;
+  currency: string;
+  broker?: string;
+  notes?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InvestmentTransaction {
+  id: string;
+  account_id: string;
+  type: 'buy' | 'sell' | 'dividend';
+  shares: number;
+  price: number;
+  amount: number;
+  fee: number;
+  date: string;
+  notes?: string;
+  created_at: string;
+}
+
+export function getInvestmentAccounts(): InvestmentAccount[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM investment_accounts ORDER BY name ASC');
+  const results: InvestmentAccount[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as InvestmentAccount);
+  }
+  stmt.free();
+  return results;
+}
+
+export function addInvestmentAccount(
+  id: string,
+  name: string,
+  type: InvestmentAccount['type'],
+  symbol: string,
+  currency: string,
+  broker: string,
+  notes: string
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT INTO investment_accounts (id, name, type, symbol, shares, cost_basis, current_price, currency, broker, notes, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?)`,
+    [id, name, type, symbol || null, currency || 'CNY', broker || null, notes || null, now, now]
+  );
+  saveDatabase();
+}
+
+export function updateInvestmentAccount(
+  id: string,
+  name: string,
+  type: InvestmentAccount['type'],
+  symbol: string,
+  currency: string,
+  broker: string,
+  notes: string
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `UPDATE investment_accounts SET name = ?, type = ?, symbol = ?, currency = ?, broker = ?, notes = ?, updated_at = ? WHERE id = ?`,
+    [name, type, symbol || null, currency || 'CNY', broker || null, notes || null, now, id]
+  );
+  saveDatabase();
+}
+
+export function updateInvestmentPrice(id: string, currentPrice: number): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'UPDATE investment_accounts SET current_price = ?, updated_at = ? WHERE id = ?',
+    [currentPrice, now, id]
+  );
+  saveDatabase();
+}
+
+export function deleteInvestmentAccount(id: string): void {
+  const database = getDatabase();
+  database.run('DELETE FROM investment_accounts WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function getInvestmentTransactions(accountId?: string): InvestmentTransaction[] {
+  const database = getDatabase();
+  let stmt;
+  if (accountId) {
+    stmt = database.prepare('SELECT * FROM investment_transactions WHERE account_id = ? ORDER BY date DESC');
+    stmt.bind([accountId]);
+  } else {
+    stmt = database.prepare('SELECT * FROM investment_transactions ORDER BY date DESC');
+  }
+  const results: InvestmentTransaction[] = [];
+  while (stmt.step()) {
+    results.push(stmt.getAsObject() as unknown as InvestmentTransaction);
+  }
+  stmt.free();
+  return results;
+}
+
+export function addInvestmentTransaction(
+  id: string,
+  accountId: string,
+  type: InvestmentTransaction['type'],
+  shares: number,
+  price: number,
+  fee: number,
+  date: string,
+  notes: string
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  const amount = shares * price;
+
+  database.run(
+    `INSERT INTO investment_transactions (id, account_id, type, shares, price, amount, fee, date, notes, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [id, accountId, type, shares, price, amount, fee, date, notes || null, now]
+  );
+
+  // Update account shares and cost basis
+  const account = database.prepare('SELECT shares, cost_basis FROM investment_accounts WHERE id = ?');
+  account.bind([accountId]);
+  let currentShares = 0;
+  let currentCost = 0;
+  if (account.step()) {
+    const row = account.getAsObject() as { shares: number; cost_basis: number };
+    currentShares = Number(row.shares) || 0;
+    currentCost = Number(row.cost_basis) || 0;
+  }
+  account.free();
+
+  let newShares = currentShares;
+  let newCostBasis = currentCost;
+
+  if (type === 'buy') {
+    const totalCost = currentCost * currentShares + amount + fee;
+    newShares = currentShares + shares;
+    newCostBasis = newShares > 0 ? totalCost / newShares : 0;
+  } else if (type === 'sell') {
+    newShares = Math.max(0, currentShares - shares);
+    if (newShares === 0) {
+      newCostBasis = 0;
+    }
+  }
+
+  database.run(
+    'UPDATE investment_accounts SET shares = ?, cost_basis = ?, updated_at = ? WHERE id = ?',
+    [newShares, newCostBasis, now, accountId]
+  );
+
+  saveDatabase();
+}
+
+export function deleteInvestmentTransaction(id: string): void {
+  const database = getDatabase();
+  database.run('DELETE FROM investment_transactions WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function getInvestmentSummary(): {
+  totalCost: number;
+  totalValue: number;
+  totalGain: number;
+  gainPercentage: number;
+} {
+  const database = getDatabase();
+  const stmt = database.prepare(`
+    SELECT
+      SUM(shares * cost_basis) as total_cost,
+      SUM(shares * current_price) as total_value
+    FROM investment_accounts
+    WHERE shares > 0
+  `);
+
+  let totalCost = 0;
+  let totalValue = 0;
+
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { total_cost: number; total_value: number };
+    totalCost = Number(row.total_cost) || 0;
+    totalValue = Number(row.total_value) || 0;
+  }
+  stmt.free();
+
+  const totalGain = totalValue - totalCost;
+  const gainPercentage = totalCost > 0 ? (totalGain / totalCost) * 100 : 0;
+
+  return {
+    totalCost,
+    totalValue,
+    totalGain,
+    gainPercentage,
+  };
 }

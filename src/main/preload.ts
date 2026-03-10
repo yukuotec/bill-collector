@@ -123,6 +123,16 @@ const webAPI = {
   deleteRecurringTransaction: () => Promise.resolve(true),
   toggleRecurringTransaction: () => Promise.resolve(true),
   generateRecurringTransactions: () => Promise.resolve(0),
+  // Investment APIs (web fallback)
+  getInvestmentAccounts: () => Promise.resolve([]),
+  addInvestmentAccount: () => Promise.resolve(true),
+  updateInvestmentAccount: () => Promise.resolve(true),
+  updateInvestmentPrice: () => Promise.resolve(true),
+  deleteInvestmentAccount: () => Promise.resolve(true),
+  getInvestmentTransactions: () => Promise.resolve([]),
+  addInvestmentTransaction: () => Promise.resolve(true),
+  deleteInvestmentTransaction: () => Promise.resolve(true),
+  getInvestmentSummary: () => Promise.resolve({ totalCost: 0, totalValue: 0, totalGain: 0, gainPercentage: 0 }),
 };
 
 const electronAPI = {
@@ -251,6 +261,17 @@ const electronAPI = {
   deleteRecurringTransaction: (id: string) => ipcRenderer.invoke('delete-recurring-transaction', id),
   toggleRecurringTransaction: (id: string, isActive: boolean) => ipcRenderer.invoke('toggle-recurring-transaction', id, isActive),
   generateRecurringTransactions: () => ipcRenderer.invoke('generate-recurring-transactions'),
+
+  // Investment APIs
+  getInvestmentAccounts: () => ipcRenderer.invoke('get-investment-accounts'),
+  addInvestmentAccount: (data: object) => ipcRenderer.invoke('add-investment-account', data),
+  updateInvestmentAccount: (data: object) => ipcRenderer.invoke('update-investment-account', data),
+  updateInvestmentPrice: (id: string, currentPrice: number) => ipcRenderer.invoke('update-investment-price', id, currentPrice),
+  deleteInvestmentAccount: (id: string) => ipcRenderer.invoke('delete-investment-account', id),
+  getInvestmentTransactions: (accountId?: string) => ipcRenderer.invoke('get-investment-transactions', accountId),
+  addInvestmentTransaction: (data: object) => ipcRenderer.invoke('add-investment-transaction', data),
+  deleteInvestmentTransaction: (id: string) => ipcRenderer.invoke('delete-investment-transaction', id),
+  getInvestmentSummary: () => ipcRenderer.invoke('get-investment-summary'),
 };
 
 // Export the appropriate API based on environment

@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero, getRecurringTransactions, getActiveRecurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction, generateRecurringTransactions } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero, getRecurringTransactions, getActiveRecurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction, generateRecurringTransactions, getInvestmentAccounts, addInvestmentAccount, updateInvestmentAccount, updateInvestmentPrice, deleteInvestmentAccount, getInvestmentTransactions, addInvestmentTransaction, deleteInvestmentTransaction, getInvestmentSummary } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -1858,6 +1858,119 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return generateRecurringTransactions();
     } catch (error) {
       console.error('[IPC Error] generate-recurring-transactions:', error);
+      throw error;
+    }
+  });
+
+  // Investment Account handlers
+  ipcMain.handle('get-investment-accounts', async () => {
+    try {
+      return getInvestmentAccounts();
+    } catch (error) {
+      console.error('[IPC Error] get-investment-accounts:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('add-investment-account', async (_, data: {
+    id: string;
+    name: string;
+    type: 'stock' | 'fund' | 'bond' | 'crypto';
+    symbol: string;
+    currency: string;
+    broker: string;
+    notes: string;
+  }) => {
+    try {
+      addInvestmentAccount(data.id, data.name, data.type, data.symbol, data.currency, data.broker, data.notes);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] add-investment-account:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('update-investment-account', async (_, data: {
+    id: string;
+    name: string;
+    type: 'stock' | 'fund' | 'bond' | 'crypto';
+    symbol: string;
+    currency: string;
+    broker: string;
+    notes: string;
+  }) => {
+    try {
+      updateInvestmentAccount(data.id, data.name, data.type, data.symbol, data.currency, data.broker, data.notes);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] update-investment-account:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('update-investment-price', async (_, id: string, currentPrice: number) => {
+    try {
+      updateInvestmentPrice(id, currentPrice);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] update-investment-price:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('delete-investment-account', async (_, id: string) => {
+    try {
+      deleteInvestmentAccount(id);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] delete-investment-account:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-investment-transactions', async (_, accountId?: string) => {
+    try {
+      return getInvestmentTransactions(accountId);
+    } catch (error) {
+      console.error('[IPC Error] get-investment-transactions:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('add-investment-transaction', async (_, data: {
+    id: string;
+    accountId: string;
+    type: 'buy' | 'sell' | 'dividend';
+    shares: number;
+    price: number;
+    fee: number;
+    date: string;
+    notes: string;
+  }) => {
+    try {
+      addInvestmentTransaction(data.id, data.accountId, data.type, data.shares, data.price, data.fee, data.date, data.notes);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] add-investment-transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('delete-investment-transaction', async (_, id: string) => {
+    try {
+      deleteInvestmentTransaction(id);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] delete-investment-transaction:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-investment-summary', async () => {
+    try {
+      return getInvestmentSummary();
+    } catch (error) {
+      console.error('[IPC Error] get-investment-summary:', error);
       throw error;
     }
   });
