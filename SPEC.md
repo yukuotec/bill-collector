@@ -347,6 +347,8 @@ expense-tracker/
 - [x] **Multi-account support** (银行卡/信用卡/现金/电子钱包管理)
 
 ### Future (Post-MVP)
+- [x] **Source Coverage Dashboard** - Track data collection completeness
+- [x] **Mark-as-zero Persistence** - Mark months as having no data
 - [ ] Auto-collection (web scraping / notification capture)
 - [ ] Mobile app companion
 - [ ] Advanced analytics and forecasting
