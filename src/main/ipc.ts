@@ -5,7 +5,7 @@ import { execFileSync } from 'child_process';
 import { TextDecoder } from 'util';
 import Papa from 'papaparse';
 import { Dialog, IpcMain } from 'electron';
-import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero, getRecurringTransactions, getActiveRecurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction, generateRecurringTransactions, getInvestmentAccounts, addInvestmentAccount, updateInvestmentAccount, updateInvestmentPrice, deleteInvestmentAccount, getInvestmentTransactions, addInvestmentTransaction, deleteInvestmentTransaction, getInvestmentSummary } from './database';
+import { getDatabase, getDatabasePath, deleteBudget, getBudgets, getBudgetSpending, insertTransactions, saveDatabase, setBudget, getTransactionTags, addTransactionTag, removeTransactionTag, updateTransactionCurrency, getMembers, addMember, updateMember, deleteMember, setTransactionMember, getMemberSpendingSummary, learnAssignment, predictMember, getPatterns, deletePattern, applyTriageRules, autoApplyTriageRules, checkSimilarAssignments, batchAssignSimilar, getEmailAccounts, addEmailAccount, deleteEmailAccount, getEmailMessages, getAccounts, addAccount, updateAccount, deleteAccount, setTransactionAccount, getAccountSpendingSummary, updateAccountBalance, getSourceCoverage, getLastImportBySource, markAsZero, unmarkAsZero, isMarkedAsZero, getMarkedAsZero, getRecurringTransactions, getActiveRecurringTransactions, addRecurringTransaction, updateRecurringTransaction, deleteRecurringTransaction, toggleRecurringTransaction, generateRecurringTransactions, getInvestmentAccounts, addInvestmentAccount, updateInvestmentAccount, updateInvestmentPrice, deleteInvestmentAccount, getInvestmentTransactions, addInvestmentTransaction, deleteInvestmentTransaction, getInvestmentSummary, getSavingsGoals, addSavingsGoal, updateSavingsGoal, addToSavingsGoal, deleteSavingsGoal, getSavingsSummary } from './database';
 import { parseAlipay } from '../parsers/alipay';
 import { parseBank } from '../parsers/bank';
 import { parseWechat } from '../parsers/wechat';
@@ -1971,6 +1971,81 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return getInvestmentSummary();
     } catch (error) {
       console.error('[IPC Error] get-investment-summary:', error);
+      throw error;
+    }
+  });
+
+  // Savings Goals handlers
+  ipcMain.handle('get-savings-goals', async () => {
+    try {
+      return getSavingsGoals();
+    } catch (error) {
+      console.error('[IPC Error] get-savings-goals:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('add-savings-goal', async (_, data: {
+    id: string;
+    name: string;
+    targetAmount: number;
+    deadline: string | null;
+    category: string;
+    color: string;
+  }) => {
+    try {
+      addSavingsGoal(data.id, data.name, data.targetAmount, data.deadline, data.category, data.color);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] add-savings-goal:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('update-savings-goal', async (_, data: {
+    id: string;
+    name: string;
+    targetAmount: number;
+    currentAmount: number;
+    deadline: string | null;
+    category: string;
+    color: string;
+    isActive: boolean;
+  }) => {
+    try {
+      updateSavingsGoal(data.id, data.name, data.targetAmount, data.currentAmount, data.deadline, data.category, data.color, data.isActive);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] update-savings-goal:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('add-to-savings-goal', async (_, id: string, amount: number) => {
+    try {
+      addToSavingsGoal(id, amount);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] add-to-savings-goal:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('delete-savings-goal', async (_, id: string) => {
+    try {
+      deleteSavingsGoal(id);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] delete-savings-goal:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-savings-summary', async () => {
+    try {
+      return getSavingsSummary();
+    } catch (error) {
+      console.error('[IPC Error] get-savings-summary:', error);
       throw error;
     }
   });

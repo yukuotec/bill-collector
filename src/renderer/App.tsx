@@ -13,6 +13,7 @@ import QuickAdd from './pages/QuickAdd';
 import SourceCoverage from './pages/SourceCoverage';
 import Recurring from './pages/Recurring';
 import Investments from './pages/Investments';
+import SavingsGoals from './pages/SavingsGoals';
 
 declare global {
   interface Window {
@@ -147,6 +148,7 @@ const navItems = [
   { page: 'dashboard', label: '仪表盘', icon: '📊' },
   { page: 'recurring', label: '周期记账', icon: '📅' },
   { page: 'investments', label: '投资追踪', icon: '📈' },
+  { page: 'savings', label: '目标储蓄', icon: '🎯' },
   { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'accounts', label: '账户', icon: '💳' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
@@ -223,6 +225,7 @@ export default function App() {
         {currentPage === 'quick-add' && <QuickAdd onClose={() => navigate('dashboard')} />}
         {currentPage === 'recurring' && <Recurring />}
         {currentPage === 'investments' && <Investments />}
+        {currentPage === 'savings' && <SavingsGoals />}
       </main>
     </div>
   );

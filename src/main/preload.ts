@@ -133,6 +133,13 @@ const webAPI = {
   addInvestmentTransaction: () => Promise.resolve(true),
   deleteInvestmentTransaction: () => Promise.resolve(true),
   getInvestmentSummary: () => Promise.resolve({ totalCost: 0, totalValue: 0, totalGain: 0, gainPercentage: 0 }),
+  // Savings Goals APIs (web fallback)
+  getSavingsGoals: () => Promise.resolve([]),
+  addSavingsGoal: () => Promise.resolve(true),
+  updateSavingsGoal: () => Promise.resolve(true),
+  addToSavingsGoal: () => Promise.resolve(true),
+  deleteSavingsGoal: () => Promise.resolve(true),
+  getSavingsSummary: () => Promise.resolve({ totalTarget: 0, totalCurrent: 0, totalRemaining: 0, completedGoals: 0, totalGoals: 0 }),
 };
 
 const electronAPI = {
@@ -272,6 +279,14 @@ const electronAPI = {
   addInvestmentTransaction: (data: object) => ipcRenderer.invoke('add-investment-transaction', data),
   deleteInvestmentTransaction: (id: string) => ipcRenderer.invoke('delete-investment-transaction', id),
   getInvestmentSummary: () => ipcRenderer.invoke('get-investment-summary'),
+
+  // Savings Goals APIs
+  getSavingsGoals: () => ipcRenderer.invoke('get-savings-goals'),
+  addSavingsGoal: (data: object) => ipcRenderer.invoke('add-savings-goal', data),
+  updateSavingsGoal: (data: object) => ipcRenderer.invoke('update-savings-goal', data),
+  addToSavingsGoal: (id: string, amount: number) => ipcRenderer.invoke('add-to-savings-goal', id, amount),
+  deleteSavingsGoal: (id: string) => ipcRenderer.invoke('delete-savings-goal', id),
+  getSavingsSummary: () => ipcRenderer.invoke('get-savings-summary'),
 };
 
 // Export the appropriate API based on environment

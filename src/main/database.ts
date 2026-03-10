@@ -312,6 +312,24 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_investment_txn_account ON investment_transactions(account_id)');
   database.run('CREATE INDEX IF NOT EXISTS idx_investment_txn_date ON investment_transactions(date)');
 
+  // Savings goals table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS savings_goals (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      target_amount REAL NOT NULL,
+      current_amount REAL DEFAULT 0,
+      deadline TEXT,
+      category TEXT,
+      color TEXT DEFAULT '#3B82F6',
+      is_active INTEGER DEFAULT 1,
+      created_at TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_savings_active ON savings_goals(is_active)');
+
   const now = new Date().toISOString();
   database.run(
     `
@@ -2143,4 +2161,126 @@ export function getInvestmentSummary(): {
     totalGain,
     gainPercentage,
   };
+}
+
+// ============== Savings Goals Functions ==============
+
+export interface SavingsGoal {
+  id: string;
+  name: string;
+  target_amount: number;
+  current_amount: number;
+  deadline?: string;
+  category?: string;
+  color?: string;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export function getSavingsGoals(): SavingsGoal[] {
+  const database = getDatabase();
+  const stmt = database.prepare('SELECT * FROM savings_goals ORDER BY created_at DESC');
+  const results: SavingsGoal[] = [];
+  while (stmt.step()) {
+    const row = stmt.getAsObject() as unknown as SavingsGoal;
+    results.push({
+      ...row,
+      is_active: Boolean(row.is_active),
+    });
+  }
+  stmt.free();
+  return results;
+}
+
+export function addSavingsGoal(
+  id: string,
+  name: string,
+  targetAmount: number,
+  deadline: string | null,
+  category: string,
+  color: string
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `INSERT INTO savings_goals (id, name, target_amount, current_amount, deadline, category, color, is_active, created_at, updated_at)
+     VALUES (?, ?, ?, 0, ?, ?, ?, 1, ?, ?)`,
+    [id, name, targetAmount, deadline || null, category || null, color || '#3B82F6', now, now]
+  );
+  saveDatabase();
+}
+
+export function updateSavingsGoal(
+  id: string,
+  name: string,
+  targetAmount: number,
+  currentAmount: number,
+  deadline: string | null,
+  category: string,
+  color: string,
+  isActive: boolean
+): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    `UPDATE savings_goals SET name = ?, target_amount = ?, current_amount = ?, deadline = ?, category = ?, color = ?, is_active = ?, updated_at = ? WHERE id = ?`,
+    [name, targetAmount, currentAmount, deadline || null, category || null, color || '#3B82F6', isActive ? 1 : 0, now, id]
+  );
+  saveDatabase();
+}
+
+export function addToSavingsGoal(id: string, amount: number): void {
+  const database = getDatabase();
+  const now = new Date().toISOString();
+  database.run(
+    'UPDATE savings_goals SET current_amount = current_amount + ?, updated_at = ? WHERE id = ?',
+    [amount, now, id]
+  );
+  saveDatabase();
+}
+
+export function deleteSavingsGoal(id: string): void {
+  const database = getDatabase();
+  database.run('DELETE FROM savings_goals WHERE id = ?', [id]);
+  saveDatabase();
+}
+
+export function getSavingsSummary(): {
+  totalTarget: number;
+  totalCurrent: number;
+  totalRemaining: number;
+  completedGoals: number;
+  totalGoals: number;
+} {
+  const database = getDatabase();
+  const stmt = database.prepare(`
+    SELECT
+      SUM(target_amount) as total_target,
+      SUM(current_amount) as total_current,
+      COUNT(*) as total_goals,
+      SUM(CASE WHEN current_amount >= target_amount THEN 1 ELSE 0 END) as completed_goals
+    FROM savings_goals
+    WHERE is_active = 1
+  `);
+
+  let result = {
+    totalTarget: 0,
+    totalCurrent: 0,
+    totalRemaining: 0,
+    completedGoals: 0,
+    totalGoals: 0,
+  };
+
+  if (stmt.step()) {
+    const row = stmt.getAsObject() as { total_target: number; total_current: number; total_goals: number; completed_goals: number };
+    result.totalTarget = Number(row.total_target) || 0;
+    result.totalCurrent = Number(row.total_current) || 0;
+    result.totalRemaining = result.totalTarget - result.totalCurrent;
+    result.totalGoals = Number(row.total_goals) || 0;
+    result.completedGoals = Number(row.completed_goals) || 0;
+  }
+  stmt.free();
+
+  return result;
 }
