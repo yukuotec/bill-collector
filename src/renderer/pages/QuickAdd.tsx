@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
+import { getSupportedCurrencies, getCurrencyName, getCurrencySymbol } from '../../shared/currency';
 
 interface QuickAddProps {
   onClose?: () => void;
@@ -37,16 +38,18 @@ interface TransactionTemplate {
 export default function QuickAdd({ onClose }: QuickAddProps) {
   // Form state
   const [amount, setAmount] = useState('');
+  const [currency, setCurrency] = useState('CNY');
   const [category, setCategory] = useState('其他');
   const [counterparty, setCounterparty] = useState('');
   const [date, setDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [memberId, setMemberId] = useState<string>('');
   const [type, setType] = useState<'expense' | 'income'>('expense');
-  
+
   // Data for dropdowns
   const [categories, setCategories] = useState<string[]>(DEFAULT_CATEGORIES);
   const [merchants, setMerchants] = useState<string[]>([]);
   const [members, setMembers] = useState<{ id: string; name: string; color: string }[]>([]);
+  const [supportedCurrencies] = useState<string[]>(getSupportedCurrencies());
   
   // Autocomplete state
   const [showMerchantSuggestions, setShowMerchantSuggestions] = useState(false);
@@ -252,6 +255,7 @@ export default function QuickAdd({ onClose }: QuickAddProps) {
         category,
         counterparty: counterparty || undefined,
         member_id: memberId || null,
+        currency,
       });
       
       if (result.success && result.id) {
@@ -406,20 +410,31 @@ export default function QuickAdd({ onClose }: QuickAddProps) {
             <span className="label-icon">💰</span>
             金额
           </label>
-          <div className="amount-input-wrapper">
-            <span className="currency">¥</span>
-            <input
-              ref={amountInputRef}
-              id="amount-input"
-              type="number"
-              step="0.01"
-              min="0"
-              placeholder="0.00"
-              value={amount}
-              onChange={(e) => setAmount(e.target.value)}
-              onKeyDown={handleKeyDown}
-              autoFocus
-            />
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <div className="amount-input-wrapper" style={{ flex: 1 }}>
+              <span className="currency">{getCurrencySymbol(currency)}</span>
+              <input
+                ref={amountInputRef}
+                id="amount-input"
+                type="number"
+                step="0.01"
+                min="0"
+                placeholder="0.00"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                onKeyDown={handleKeyDown}
+                autoFocus
+              />
+            </div>
+            <select
+              value={currency}
+              onChange={(e) => setCurrency(e.target.value)}
+              style={{ width: '100px', padding: '8px' }}
+            >
+              {supportedCurrencies.map(curr => (
+                <option key={curr} value={curr}>{curr}</option>
+              ))}
+            </select>
           </div>
         </div>
         
