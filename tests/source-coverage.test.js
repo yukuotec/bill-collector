@@ -1,11 +1,13 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const path = require('path');
-const os = require('os');
 const fs = require('fs');
+const os = require('os');
 
-// Set up test database path before imports
-process.env.EXPENSE_DB_PATH = path.join(os.tmpdir(), `source-coverage-test-${Date.now()}.db`);
+// Set up test database path
+const testDbDir = path.join(os.tmpdir(), `source-coverage-test-${Date.now()}`);
+fs.mkdirSync(testDbDir, { recursive: true });
+process.env.EXPENSE_DB_PATH = path.join(testDbDir, 'test.db');
 
 // Import database functions
 const {
@@ -22,6 +24,14 @@ const {
   insertTransactions,
 } = require('../dist/main/database');
 
+// Initialize database before tests
+let db;
+test('Initialize database', async () => {
+  await initDatabase();
+  db = require('../dist/main/database').getDatabase();
+  assert.ok(db, 'Database should be initialized');
+});
+
 test('Source Coverage database functions exist', () => {
   assert.ok(typeof getSourceCoverage === 'function', 'getSourceCoverage exists');
   assert.ok(typeof getLastImportBySource === 'function', 'getLastImportBySource exists');
@@ -30,15 +40,6 @@ test('Source Coverage database functions exist', () => {
   assert.ok(typeof isMarkedAsZero === 'function', 'isMarkedAsZero exists');
   assert.ok(typeof getMarkedAsZero === 'function', 'getMarkedAsZero exists');
   assert.ok(typeof ensureSourceCoverageZerosTable === 'function', 'ensureSourceCoverageZerosTable exists');
-});
-
-test('initDatabase initializes source coverage schema', () => {
-  // Initialize database
-  initDatabase();
-
-  // Verify database is initialized
-  const db = require('../dist/main/database').getDatabase();
-  assert.ok(db, 'Database should be initialized');
 });
 
 test('getSourceCoverage returns empty array when no data', () => {
@@ -185,6 +186,9 @@ test('cleanup', () => {
   try {
     if (fs.existsSync(process.env.EXPENSE_DB_PATH)) {
       fs.unlinkSync(process.env.EXPENSE_DB_PATH);
+    }
+    if (fs.existsSync(testDbDir)) {
+      fs.rmdirSync(testDbDir);
     }
   } catch (e) {
     // Ignore cleanup errors
