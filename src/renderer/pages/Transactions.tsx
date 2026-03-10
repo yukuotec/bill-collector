@@ -81,6 +81,57 @@ function formatDate(date: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+function getTodayRange(): { startDate: string; endDate: string } {
+  const today = formatDate(new Date());
+  return { startDate: today, endDate: today };
+}
+
+function getYesterdayRange(): { startDate: string; endDate: string } {
+  const yesterday = new Date();
+  yesterday.setDate(yesterday.getDate() - 1);
+  const yesterdayStr = formatDate(yesterday);
+  return { startDate: yesterdayStr, endDate: yesterdayStr };
+}
+
+function getLast7DaysRange(): { startDate: string; endDate: string } {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 6);
+  return { startDate: formatDate(start), endDate: formatDate(end) };
+}
+
+function getLast30DaysRange(): { startDate: string; endDate: string } {
+  const end = new Date();
+  const start = new Date();
+  start.setDate(start.getDate() - 29);
+  return { startDate: formatDate(start), endDate: formatDate(end) };
+}
+
+type DateRangeOption =
+  | 'today' | 'yesterday' | 'last7days' | 'last30days'
+  | 'thisweek' | 'lastweek'
+  | 'thismonth' | 'lastmonth'
+  | 'thisyear' | 'custom';
+
+interface DateRangeConfig {
+  value: DateRangeOption;
+  label: string;
+  getRange: () => { startDate: string; endDate: string };
+}
+
+const DATE_RANGE_OPTIONS: DateRangeConfig[] = [
+  { value: 'today', label: '今天', getRange: getTodayRange },
+  { value: 'yesterday', label: '昨天', getRange: getYesterdayRange },
+  { value: 'last7days', label: '近7天', getRange: getLast7DaysRange },
+  { value: 'last30days', label: '近30天', getRange: getLast30DaysRange },
+  { value: 'thisweek', label: '本周', getRange: getThisWeekRange },
+  { value: 'lastweek', label: '上周', getRange: getLastWeekRange },
+  { value: 'thismonth', label: '本月', getRange: getThisMonthRange },
+  { value: 'lastmonth', label: '上月', getRange: getLastMonthRange },
+  { value: 'thisyear', label: '今年', getRange: getThisYearRange },
+  { value: 'custom', label: '自定义', getRange: () => ({ startDate: '', endDate: '' }) },
+];
+
 function getThisWeekRange(): { startDate: string; endDate: string } {
   const now = new Date();
   return {
@@ -133,6 +184,197 @@ function isRefund(txn: Transaction): boolean {
   return txn.is_refund === 1 || txn.is_refund === true;
 }
 
+// ========== Search Stats Panel Component ==========
+interface SearchStatsPanelProps {
+  transactions: Transaction[];
+  filter: FilterState;
+}
+
+function SearchStatsPanel({ transactions, filter }: SearchStatsPanelProps) {
+  // Only show when there are transactions and filter is applied
+  const hasFilter = filter.q || filter.category || filter.merchant || filter.source ||
+                    filter.type || filter.memberId || filter.accountId ||
+                    filter.startDate || filter.endDate;
+
+  if (transactions.length === 0) return null;
+
+  const stats = transactions.reduce(
+    (acc, txn) => {
+      if (txn.type === 'income') {
+        acc.income += txn.amount;
+        acc.incomeCount++;
+      } else if (txn.type === 'expense') {
+        acc.expense += txn.amount;
+        acc.expenseCount++;
+      }
+      return acc;
+    },
+    { income: 0, expense: 0, incomeCount: 0, expenseCount: 0 }
+  );
+
+  const net = stats.income - stats.expense;
+
+  return (
+    <div className="card" style={{ marginBottom: '16px', background: '#F8FAFC' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: '24px', padding: '12px 16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span style={{ fontSize: '20px' }}>📊</span>
+          <span style={{ fontWeight: 600, color: '#1F2937' }}>搜索结果</span>
+        </div>
+
+        <div style={{ display: 'flex', gap: '24px', flex: 1 }}>
+          <div>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>共</span>
+            <span style={{ fontSize: '18px', fontWeight: 600, marginLeft: '4px', color: '#1F2937' }}>
+              {transactions.length}
+            </span>
+            <span style={{ fontSize: '12px', color: '#6B7280', marginLeft: '2px' }}>条</span>
+          </div>
+
+          <div>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>收入</span>
+            <span style={{ fontSize: '18px', fontWeight: 600, marginLeft: '4px', color: '#10B981' }}>
+              +¥{stats.income.toFixed(2)}
+            </span>
+            <span style={{ fontSize: '12px', color: '#6B7280', marginLeft: '4px' }}>({stats.incomeCount}笔)</span>
+          </div>
+
+          <div>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>支出</span>
+            <span style={{ fontSize: '18px', fontWeight: 600, marginLeft: '4px', color: '#EF4444' }}>
+              -¥{stats.expense.toFixed(2)}
+            </span>
+            <span style={{ fontSize: '12px', color: '#6B7280', marginLeft: '4px' }}>({stats.expenseCount}笔)</span>
+          </div>
+
+          <div>
+            <span style={{ fontSize: '12px', color: '#6B7280' }}>结余</span>
+            <span
+              style={{
+                fontSize: '18px',
+                fontWeight: 600,
+                marginLeft: '4px',
+                color: net >= 0 ? '#10B981' : '#EF4444'
+              }}
+            >
+              {net >= 0 ? '+' : '-'}¥{Math.abs(net).toFixed(2)}
+            </span>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ========== Date Range Selector Component ==========
+interface DateRangeSelectorProps {
+  startDate: string;
+  endDate: string;
+  onChange: (range: { startDate: string; endDate: string }) => void;
+}
+
+function DateRangeSelector({ startDate, endDate, onChange }: DateRangeSelectorProps) {
+  const [isCustom, setIsCustom] = useState(false);
+
+  // Determine current selection
+  const getCurrentOption = (): DateRangeOption => {
+    if (!startDate && !endDate) return 'thismonth';
+
+    const today = getTodayRange();
+    const yesterday = getYesterdayRange();
+    const last7 = getLast7DaysRange();
+    const last30 = getLast30DaysRange();
+    const thisWeek = getThisWeekRange();
+    const lastWeek = getLastWeekRange();
+    const thisMonth = getThisMonthRange();
+    const lastMonth = getLastMonthRange();
+    const thisYear = getThisYearRange();
+
+    if (startDate === today.startDate && endDate === today.endDate) return 'today';
+    if (startDate === yesterday.startDate && endDate === yesterday.endDate) return 'yesterday';
+    if (startDate === last7.startDate && endDate === last7.endDate) return 'last7days';
+    if (startDate === last30.startDate && endDate === last30.endDate) return 'last30days';
+    if (startDate === thisWeek.startDate && endDate === thisWeek.endDate) return 'thisweek';
+    if (startDate === lastWeek.startDate && endDate === lastWeek.endDate) return 'lastweek';
+    if (startDate === thisMonth.startDate && endDate === thisMonth.endDate) return 'thismonth';
+    if (startDate === lastMonth.startDate && endDate === lastMonth.endDate) return 'lastmonth';
+    if (startDate === thisYear.startDate && endDate === thisYear.endDate) return 'thisyear';
+
+    return 'custom';
+  };
+
+  const currentOption = getCurrentOption();
+
+  const handleSelectChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const value = e.target.value as DateRangeOption;
+    if (value === 'custom') {
+      setIsCustom(true);
+      return;
+    }
+    setIsCustom(false);
+    const option = DATE_RANGE_OPTIONS.find(opt => opt.value === value);
+    if (option) {
+      onChange(option.getRange());
+    }
+  };
+
+  const handleStartDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange({ startDate: e.target.value, endDate });
+  };
+
+  const handleEndDateChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    onChange({ startDate, endDate: e.target.value });
+  };
+
+  return (
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+      <select
+        value={isCustom || currentOption === 'custom' ? 'custom' : currentOption}
+        onChange={handleSelectChange}
+        style={{
+          padding: '6px 12px',
+          borderRadius: '6px',
+          border: '1px solid #D1D5DB',
+          background: 'white',
+          fontSize: '14px'
+        }}
+      >
+        {DATE_RANGE_OPTIONS.map(opt => (
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
+        ))}
+      </select>
+
+      {isCustom && (
+        <>
+          <input
+            type="date"
+            value={startDate}
+            onChange={handleStartDateChange}
+            style={{
+              padding: '6px',
+              borderRadius: '6px',
+              border: '1px solid #D1D5DB',
+              fontSize: '14px'
+            }}
+          />
+          <span style={{ color: '#6B7280' }}>至</span>
+          <input
+            type="date"
+            value={endDate}
+            onChange={handleEndDateChange}
+            style={{
+              padding: '6px',
+              borderRadius: '6px',
+              border: '1px solid #D1D5DB',
+              fontSize: '14px'
+            }}
+          />
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function Transactions({ locationSearch, onReplaceSearch }: TransactionsProps) {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [duplicates, setDuplicates] = useState<DuplicateReviewItem[]>([]);
@@ -154,7 +396,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
     memberId: string;
     memberName: string;
   } | null>(null);
-  const inputRef = useRef<HTMLInputElement>(null);
+  const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<string>>(new Set());
   const tagsInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const defaultThisMonth = getThisMonthRange();
@@ -511,6 +753,49 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const isAllSelected = transactions.length > 0 && transactions.every((txn) => selectedIds.has(txn.id));
   const isPartialSelected = transactions.some((txn) => selectedIds.has(txn.id)) && !isAllSelected;
 
+  // ========== Duplicate Batch Operations ==========
+  const handleSelectDuplicateAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedDuplicateIds(new Set(duplicates.map(d => d.id)));
+    } else {
+      setSelectedDuplicateIds(new Set());
+    }
+  };
+
+  const handleSelectDuplicate = (id: string, checked: boolean) => {
+    const newSelected = new Set(selectedDuplicateIds);
+    if (checked) {
+      newSelected.add(id);
+    } else {
+      newSelected.delete(id);
+    }
+    setSelectedDuplicateIds(newSelected);
+  };
+
+  const handleBatchDuplicateAction = async (action: 'keep' | 'merge') => {
+    if (selectedDuplicateIds.size === 0) return;
+    const count = selectedDuplicateIds.size;
+    const actionText = action === 'keep' ? '保留' : '合并';
+    if (confirm(`确定要${actionText}选中的 ${count} 条重复记录吗？`)) {
+      const ids = Array.from(selectedDuplicateIds);
+      let successCount = 0;
+      for (const id of ids) {
+        try {
+          await window.electronAPI.resolveDuplicate(id, action);
+          successCount++;
+        } catch (error) {
+          console.error(`Failed to ${action} duplicate ${id}:`, error);
+        }
+      }
+      setSelectedDuplicateIds(new Set());
+      await Promise.all([loadTransactions(), loadDuplicates()]);
+      alert(`成功${actionText} ${successCount} 条记录`);
+    }
+  };
+
+  const isAllDuplicatesSelected = duplicates.length > 0 && duplicates.every(d => selectedDuplicateIds.has(d.id));
+  const isPartialDuplicatesSelected = duplicates.some(d => selectedDuplicateIds.has(d.id)) && !isAllDuplicatesSelected;
+
   return (
     <div className="transactions">
       <div className="page-header">
@@ -535,6 +820,9 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         </div>
       )}
 
+      {/* Search Stats Panel */}
+      <SearchStatsPanel transactions={transactions} filter={filter} />
+
       <div className="filters filters-wrap">
         <input
           className="search-input"
@@ -552,13 +840,12 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
         />
 
         <label className="filter-inline">
-          开始日期
-          <input type="date" value={filter.startDate} onChange={(e) => updateFilter({ startDate: e.target.value })} />
-        </label>
-
-        <label className="filter-inline">
-          结束日期
-          <input type="date" value={filter.endDate} onChange={(e) => updateFilter({ endDate: e.target.value })} />
+          时间范围
+          <DateRangeSelector
+            startDate={filter.startDate}
+            endDate={filter.endDate}
+            onChange={({ startDate, endDate }) => updateFilter({ startDate, endDate })}
+          />
         </label>
 
         <div className="quick-filters">
@@ -637,10 +924,41 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
 
       {duplicates.length > 0 && (
         <div className="duplicate-panel">
-          <h3>待确认重复记录 ({duplicates.length})</h3>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+            <h3 style={{ margin: 0 }}>待确认重复记录 ({duplicates.length})</h3>
+            {selectedDuplicateIds.size > 0 && (
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ color: '#6B7280', fontSize: '14px' }}>
+                  已选择 {selectedDuplicateIds.size} 条
+                </span>
+                <button
+                  onClick={() => handleBatchDuplicateAction('keep')}
+                  className="btn-secondary"
+                  style={{ fontSize: '13px', padding: '4px 12px' }}
+                >
+                  保留选中
+                </button>
+                <button
+                  onClick={() => handleBatchDuplicateAction('merge')}
+                  className="btn-primary"
+                  style={{ fontSize: '13px', padding: '4px 12px' }}
+                >
+                  合并选中
+                </button>
+              </div>
+            )}
+          </div>
           <table className="table">
             <thead>
               <tr>
+                <th style={{ width: '40px' }}>
+                  <input
+                    type="checkbox"
+                    checked={isAllDuplicatesSelected}
+                    ref={(el) => { if (el) el.indeterminate = isPartialDuplicatesSelected; }}
+                    onChange={(e) => handleSelectDuplicateAll(e.target.checked)}
+                  />
+                </th>
                 <th>当前记录</th>
                 <th>建议记录</th>
                 <th>操作</th>
@@ -649,6 +967,13 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
             <tbody>
               {duplicates.map((txn) => (
                 <tr key={txn.id}>
+                  <td>
+                    <input
+                      type="checkbox"
+                      checked={selectedDuplicateIds.has(txn.id)}
+                      onChange={(e) => handleSelectDuplicate(txn.id, e.target.checked)}
+                    />
+                  </td>
                   <td>{formatDuplicateSummary(txn)}</td>
                   <td>
                     {txn.target_id
