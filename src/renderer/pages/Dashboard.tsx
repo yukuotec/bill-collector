@@ -4,6 +4,18 @@ import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts';
 import { SOURCES, SourceId } from '../../shared/sources';
 
+// Transaction Template interface (synced with QuickAdd)
+interface TransactionTemplate {
+  id: string;
+  name: string;
+  amount: number;
+  category: string;
+  counterparty: string;
+  type: 'expense' | 'income';
+  memberId: string;
+  createdAt: string;
+}
+
 interface CategorySummary {
   category: string;
   total: number;
@@ -64,6 +76,263 @@ const CATEGORY_ICONS: Record<string, string> = {
 
 interface DashboardProps {
   onDrilldown: (query: DrilldownQuery) => void;
+}
+
+// Quick Actions Widget Component
+interface QuickActionsWidgetProps {
+  onDrilldown: (query: DrilldownQuery) => void;
+}
+
+function QuickActionsWidget({ onDrilldown }: QuickActionsWidgetProps) {
+  const [frequentTransactions, setFrequentTransactions] = useState<Array<{
+    counterparty: string;
+    category: string;
+    type: 'expense' | 'income';
+    count: number;
+  }>>([]);
+  const [quickTemplates, setQuickTemplates] = useState<TransactionTemplate[]>([]);
+
+  useEffect(() => {
+    // Load frequent transactions from recent history
+    const loadFrequent = async () => {
+      try {
+        const result = await window.electronAPI.getTransactions({
+          page: 1,
+          pageSize: 100,
+          sortBy: 'date',
+          sortOrder: 'desc',
+        });
+
+        // Count occurrences and get most frequent
+        const counts: Record<string, { counterparty: string; category: string; type: 'expense' | 'income'; count: number }> = {};
+        result.items.forEach((txn) => {
+          if (txn.counterparty) {
+            const key = `${txn.counterparty}-${txn.category}`;
+            if (!counts[key]) {
+              counts[key] = {
+                counterparty: txn.counterparty,
+                category: txn.category || '其他',
+                type: txn.type as 'expense' | 'income',
+                count: 0,
+              };
+            }
+            counts[key].count++;
+          }
+        });
+
+        const sorted = Object.values(counts)
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 6);
+        setFrequentTransactions(sorted);
+      } catch (error) {
+        console.error('Failed to load frequent transactions:', error);
+      }
+    };
+
+    // Load templates from localStorage
+    const savedTemplates = localStorage.getItem('expense-templates');
+    if (savedTemplates) {
+      try {
+        const parsed = JSON.parse(savedTemplates);
+        setQuickTemplates(parsed.slice(0, 4));
+      } catch (e) {
+        console.error('Failed to load templates:', e);
+      }
+    }
+
+    loadFrequent();
+  }, []);
+
+  const handleQuickAdd = () => {
+    window.location.hash = '#quick-add';
+  };
+
+  const handleViewTransactions = (filter: { category?: string; counterparty?: string }) => {
+    const query: DrilldownQuery = { drill: 'transactions' };
+    if (filter.category) query.category = filter.category;
+    if (filter.counterparty) query.merchant = filter.counterparty;
+    onDrilldown(query);
+  };
+
+  const handleImport = () => {
+    window.location.hash = '#import';
+  };
+
+  return (
+    <div className="quick-actions-widget" style={{
+      background: 'white',
+      borderRadius: '12px',
+      padding: '20px',
+      marginBottom: '20px',
+      boxShadow: '0 1px 3px rgba(0,0,0,0.1)'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <h3 style={{ margin: 0, fontSize: '16px', fontWeight: 600 }}>⚡ 快捷操作</h3>
+        <div style={{ display: 'flex', gap: '8px' }}>
+          <button
+            onClick={handleQuickAdd}
+            style={{
+              padding: '6px 12px',
+              background: '#3B82F6',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '13px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            ➕ 快速记账
+          </button>
+          <button
+            onClick={handleImport}
+            style={{
+              padding: '6px 12px',
+              background: '#10B981',
+              color: 'white',
+              border: 'none',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontSize: '13px'
+            }}
+          >
+            📥 导入账单
+          </button>
+        </div>
+      </div>
+
+      {/* Quick Templates */}
+      {quickTemplates.length > 0 && (
+        <div style={{ marginBottom: '16px' }}>
+          <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '8px', fontWeight: 500 }}>
+            📋 快速模板
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {quickTemplates.map(template => (
+              <button
+                key={template.id}
+                onClick={handleQuickAdd}
+                style={{
+                  padding: '6px 12px',
+                  background: '#F3F4F6',
+                  border: '1px solid #E5E7EB',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <span>{template.type === 'expense' ? '💸' : '💰'}</span>
+                <span>{template.name}</span>
+                <span style={{ color: '#6B7280', fontWeight: 600 }}>¥{template.amount}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Frequent Transactions */}
+      {frequentTransactions.length > 0 && (
+        <div>
+          <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '8px', fontWeight: 500 }}>
+            🏪 常用商户
+          </div>
+          <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+            {frequentTransactions.map((item, idx) => (
+              <button
+                key={idx}
+                onClick={() => handleViewTransactions({ counterparty: item.counterparty, category: item.category })}
+                style={{
+                  padding: '6px 12px',
+                  background: '#FEF3C7',
+                  border: '1px solid #FCD34D',
+                  borderRadius: '6px',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px'
+                }}
+              >
+                <span>{CATEGORY_ICONS[item.category] || '📦'}</span>
+                <span>{item.counterparty}</span>
+                <span style={{ color: '#92400E', fontSize: '11px' }}>({item.count}次)</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Quick Filters */}
+      <div style={{ marginTop: '16px', paddingTop: '16px', borderTop: '1px solid #E5E7EB' }}>
+        <div style={{ fontSize: '12px', color: '#6B7280', marginBottom: '8px', fontWeight: 500 }}>
+          🔍 快速筛选
+        </div>
+        <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+          <button
+            onClick={() => onDrilldown({ drill: 'transactions', from: new Date().toISOString().slice(0, 7) + '-01' })}
+            style={{
+              padding: '4px 10px',
+              background: '#EFF6FF',
+              border: '1px solid #BFDBFE',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: '#1E40AF'
+            }}
+          >
+            📅 本月交易
+          </button>
+          <button
+            onClick={() => onDrilldown({ drill: 'transactions', category: '餐饮' })}
+            style={{
+              padding: '4px 10px',
+              background: '#F0FDF4',
+              border: '1px solid #BBF7D0',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: '#166534'
+            }}
+          >
+            🍽️ 餐饮支出
+          </button>
+          <button
+            onClick={() => onDrilldown({ drill: 'transactions', category: '购物' })}
+            style={{
+              padding: '4px 10px',
+              background: '#FDF2F8',
+              border: '1px solid #FBCFE8',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: '#9D174D'
+            }}
+          >
+            🛍️ 购物记录
+          </button>
+          <button
+            onClick={() => window.location.hash = '#transactions?duplicates=true'}
+            style={{
+              padding: '4px 10px',
+              background: '#FEF2F2',
+              border: '1px solid #FECACA',
+              borderRadius: '4px',
+              cursor: 'pointer',
+              fontSize: '12px',
+              color: '#991B1B'
+            }}
+          >
+            ⚠️ 重复记录
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function Dashboard({ onDrilldown }: DashboardProps) {
@@ -286,6 +555,9 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
           <h3 className="income">{formatCurrency(summary.currentMonthIncome)}</h3>
         </div>
       </div>
+
+      {/* Quick Actions Widget */}
+      <QuickActionsWidget onDrilldown={onDrilldown} />
 
       {budgetAlerts.length > 0 && (
         <div className="budget-alerts">
