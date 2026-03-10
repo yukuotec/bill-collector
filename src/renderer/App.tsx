@@ -15,6 +15,7 @@ import Recurring from './pages/Recurring';
 import Investments from './pages/Investments';
 import SavingsGoals from './pages/SavingsGoals';
 import Export from './pages/Export';
+import Reminders from './pages/Reminders';
 
 declare global {
   interface Window {
@@ -153,6 +154,7 @@ const navItems = [
   { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'accounts', label: '账户', icon: '💳' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
+  { page: 'reminders', label: '提醒', icon: '🔔' },
   { page: 'export', label: '导出', icon: '📤' },
   { page: 'import', label: '导入', icon: '📥' },
   { page: 'source-coverage', label: '数据收集', icon: '📆' },
@@ -228,6 +230,7 @@ export default function App() {
         {currentPage === 'investments' && <Investments />}
         {currentPage === 'savings' && <SavingsGoals />}
         {currentPage === 'export' && <Export />}
+        {currentPage === 'reminders' && <Reminders />}
       </main>
     </div>
   );
