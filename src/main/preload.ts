@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand, SyncState } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand, SyncState, TransactionTemplate, HealthReport, BackupInfo } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -180,6 +180,16 @@ const webAPI = {
   getDeviceIdentity: () => Promise.resolve({ id: '', publicKey: '', privateKey: '' }),
   getDeviceFingerprint: () => Promise.resolve(''),
   getSyncStatus: () => Promise.resolve({ lastSyncAt: null, devices: [], pendingChanges: 0 } as SyncState),
+  // Template APIs (web fallback)
+  createTemplate: () => Promise.resolve(null),
+  getTemplates: () => Promise.resolve([]),
+  // Health check APIs (web fallback)
+  runHealthCheck: () => Promise.resolve({ issues: [], summary: { totalIssues: 0, criticalIssues: 0, fixableIssues: 0, lastCheck: '' } } as HealthReport),
+  fixHealthIssue: () => Promise.resolve(false),
+  // Backup APIs (web fallback)
+  createBackup: () => Promise.resolve({ id: '', filePath: '', createdAt: '', size: 0, description: '' } as BackupInfo),
+  listBackups: () => Promise.resolve([]),
+  restoreBackup: () => Promise.resolve(false),
 };
 
 const electronAPI = {
@@ -378,6 +388,26 @@ const electronAPI = {
     ipcRenderer.invoke('get-device-fingerprint', publicKey),
   getSyncStatus: (): Promise<SyncState> =>
     ipcRenderer.invoke('get-sync-status'),
+
+  // Template APIs
+  createTemplate: (transactionId: string, name: string): Promise<TransactionTemplate | null> =>
+    ipcRenderer.invoke('create-template', transactionId, name),
+  getTemplates: (category?: string, favoritesOnly?: boolean): Promise<TransactionTemplate[]> =>
+    ipcRenderer.invoke('get-templates', category, favoritesOnly),
+
+  // Health check APIs
+  runHealthCheck: (): Promise<HealthReport> =>
+    ipcRenderer.invoke('run-health-check'),
+  fixHealthIssue: (issue: { type: string; table: string; recordId: string }): Promise<boolean> =>
+    ipcRenderer.invoke('fix-health-issue', issue),
+
+  // Backup APIs
+  createBackup: (description?: string): Promise<BackupInfo> =>
+    ipcRenderer.invoke('create-backup', description),
+  listBackups: (): Promise<BackupInfo[]> =>
+    ipcRenderer.invoke('list-backups'),
+  restoreBackup: (backupId: string): Promise<boolean> =>
+    ipcRenderer.invoke('restore-backup', backupId),
 };
 
 // Export the appropriate API based on environment

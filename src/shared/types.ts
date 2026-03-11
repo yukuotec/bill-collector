@@ -389,3 +389,48 @@ export interface SyncState {
   devices: SyncDevice[];
   pendingChanges: number;
 }
+
+// Template types
+export interface TransactionTemplate {
+  id: string;
+  name: string;
+  amount: number;
+  type: 'expense' | 'income';
+  category: string;
+  counterparty?: string;
+  description?: string;
+  accountId?: string;
+  memberId?: string;
+  isFavorite: boolean;
+  usageCount: number;
+  createdAt: string;
+}
+
+// Health check types
+export interface HealthIssue {
+  type: 'orphaned' | 'duplicate' | 'invalid' | 'missing';
+  table: string;
+  recordId: string;
+  description: string;
+  severity: 'low' | 'medium' | 'high';
+  fixable: boolean;
+}
+
+export interface HealthReport {
+  issues: HealthIssue[];
+  summary: {
+    totalIssues: number;
+    criticalIssues: number;
+    fixableIssues: number;
+    lastCheck: string;
+  };
+}
+
+// Backup types
+export interface BackupInfo {
+  id: string;
+  filePath: string;
+  createdAt: string;
+  size: number;
+  description: string;
+}

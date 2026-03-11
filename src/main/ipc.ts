@@ -18,6 +18,9 @@ import { generateCashFlowForecast, optimizeBillPaymentDate } from './cashflow';
 import { predictCategory, learnFromCorrection, getTrainingStats, batchCategorize } from './category-ml';
 import { parseNaturalLanguage, formatParsedTransaction } from './nlp';
 import { generateDeviceIdentity, getDeviceFingerprint, exportSyncFile, importSyncFile, getSyncStatus } from './sync';
+import { createTemplateFromTransaction, getTemplates, deleteTemplate, toggleFavorite } from './templates';
+import { runHealthCheck, fixIssue } from './health-check';
+import { createBackup, listBackups, restoreBackup, deleteBackup } from './backup';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -2247,6 +2250,72 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return getSyncStatus();
     } catch (error) {
       console.error('[IPC Error] get-sync-status:', error);
+      throw error;
+    }
+  });
+
+  // Template IPC handlers
+  ipcMain.handle('create-template', async (_, transactionId: string, name: string) => {
+    try {
+      return createTemplateFromTransaction(transactionId, name);
+    } catch (error) {
+      console.error('[IPC Error] create-template:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-templates', async (_, category?: string, favoritesOnly?: boolean) => {
+    try {
+      return getTemplates(category, favoritesOnly);
+    } catch (error) {
+      console.error('[IPC Error] get-templates:', error);
+      throw error;
+    }
+  });
+
+  // Health check IPC handlers
+  ipcMain.handle('run-health-check', async () => {
+    try {
+      return runHealthCheck();
+    } catch (error) {
+      console.error('[IPC Error] run-health-check:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('fix-health-issue', async (_, issue: { type: string; table: string; recordId: string }) => {
+    try {
+      return fixIssue(issue as any);
+    } catch (error) {
+      console.error('[IPC Error] fix-health-issue:', error);
+      throw error;
+    }
+  });
+
+  // Backup IPC handlers
+  ipcMain.handle('create-backup', async (_, description?: string) => {
+    try {
+      return createBackup(description);
+    } catch (error) {
+      console.error('[IPC Error] create-backup:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('list-backups', async () => {
+    try {
+      return listBackups();
+    } catch (error) {
+      console.error('[IPC Error] list-backups:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('restore-backup', async (_, backupId: string) => {
+    try {
+      return restoreBackup(backupId);
+    } catch (error) {
+      console.error('[IPC Error] restore-backup:', error);
       throw error;
     }
   });

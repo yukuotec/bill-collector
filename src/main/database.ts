@@ -358,6 +358,37 @@ function ensureSchema(): void {
     )
   `);
 
+  // Transaction templates table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS transaction_templates (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL,
+      category TEXT NOT NULL,
+      counterparty TEXT,
+      description TEXT,
+      account_id TEXT,
+      member_id TEXT,
+      is_favorite INTEGER DEFAULT 0,
+      usage_count INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // Notification center table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id TEXT PRIMARY KEY,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT,
+      data TEXT,
+      is_read INTEGER DEFAULT 0,
+      created_at TEXT NOT NULL
+    )
+  `);
+
   const now = new Date().toISOString();
   database.run(
     `
