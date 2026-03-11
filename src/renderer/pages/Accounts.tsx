@@ -33,7 +33,7 @@ function formatCurrency(amount: number): string {
   }).format(amount);
 }
 
-export default function Accounts({ locationSearch }: AccountsProps) {
+export default function Accounts({ locationSearch: _locationSearch }: AccountsProps) {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);

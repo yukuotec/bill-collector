@@ -55,7 +55,7 @@ export default function Budgets() {
   const [category, setCategory] = useState('');
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
-  const [monthlySpending, setMonthlySpending] = useState<Record<string, number>>({});
+  const [, setMonthlySpending] = useState<Record<string, number>>({});
 
   useEffect(() => {
     loadBudgets();
@@ -86,7 +86,7 @@ export default function Budgets() {
 
   const loadMonthlySpending = async () => {
     try {
-      const [year, month] = yearMonth.split('-').map(Number);
+      const [year, _month] = yearMonth.split('-').map(Number);
       const summary = await window.electronAPI.getSummary({ year, months: 1 });
       const spending: Record<string, number> = {};
       summary.byCategory.forEach((item: { category: string; total: number }) => {

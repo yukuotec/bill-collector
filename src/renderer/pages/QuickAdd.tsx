@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, KeyboardEvent } from 'react';
-import { getSupportedCurrencies, getCurrencyName, getCurrencySymbol } from '../../shared/currency';
+import { getSupportedCurrencies, getCurrencySymbol } from '../../shared/currency';
 
 interface QuickAddProps {
   onClose?: () => void;
@@ -58,7 +58,6 @@ export default function QuickAdd({ onClose }: QuickAddProps) {
   // UI state
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
-  const [lastSavedId, setLastSavedId] = useState<string | null>(null);
 
   // Template state
   const [templates, setTemplates] = useState<TransactionTemplate[]>([]);
@@ -177,7 +176,6 @@ export default function QuickAdd({ onClose }: QuickAddProps) {
     setMemberId('');
     setType('expense');
     setMessage(null);
-    setLastSavedId(null);
     setShowCategorySuggestion(false);
     amountInputRef.current?.focus();
   };
@@ -259,7 +257,6 @@ export default function QuickAdd({ onClose }: QuickAddProps) {
       });
       
       if (result.success && result.id) {
-        setLastSavedId(result.id);
         setMessage({ type: 'success', text: continueAdding ? '已保存，继续添加...' : '保存成功' });
         
         if (continueAdding) {

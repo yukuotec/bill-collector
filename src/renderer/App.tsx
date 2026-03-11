@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, EmailMessage } from '../shared/types';
 import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
@@ -43,13 +43,27 @@ declare global {
       }>;
       getTransactions: (filters?: TransactionQuery) => Promise<TransactionListResponse>;
       getSummary: (query?: SummaryQuery) => Promise<Summary>;
+      getCategorySummary: (year?: number) => Promise<Array<{ category: string; total: number; percentage: number }>>;
+      getMonthlyTrend: (months?: number) => Promise<{
+        data: Array<{
+          month: string;
+          expense: number;
+          income: number;
+          expenseChange: number | null;
+          incomeChange: number | null;
+        }>;
+        currentMonth: string;
+        previousMonth: string;
+      }>;
       getDuplicateTransactions: () => Promise<DuplicateReviewItem[]>;
       resolveDuplicate: (id: string, action: 'keep' | 'merge') => Promise<boolean>;
       updateCategory: (id: string, category: string) => Promise<boolean>;
       updateNotes: (id: string, notes: string) => Promise<boolean>;
       deleteTransaction: (id: string) => Promise<boolean>;
-      exportCSV: (ids?: string[]) => Promise<string | null>;
-      exportExcel: () => Promise<string | null>;
+      deleteTransactionsByIds: (ids: string[]) => Promise<{ deleted: number }>;
+      exportCSV: (ids?: string[], startDate?: string, endDate?: string) => Promise<string | null>;
+      exportExcel: (startDate?: string, endDate?: string) => Promise<string | null>;
+      exportPDF: (startDate?: string, endDate?: string) => Promise<string | null>;
       backupDatabase: () => Promise<string | null>;
       getBudgets: () => Promise<Budget[]>;
       setBudget: (id: string, yearMonth: string, amount: number, category: string | null) => Promise<boolean>;
@@ -92,6 +106,18 @@ declare global {
       getAccountSummary: (year: number, month?: number) => Promise<AccountSummary[]>;
       updateAccountBalance: (id: string, balance: number) => Promise<void>;
       // Email APIs
+      getEmailAccounts: () => Promise<Array<{
+        id: string;
+        email: string;
+        imap_host: string;
+        imap_port: number;
+        smtp_host: string;
+        smtp_port: number;
+        username: string;
+        password: string;
+        last_sync?: string | null;
+        created_at: string;
+      }>>;
       addEmailAccount: (
         id: string,
         email: string,
@@ -141,6 +167,90 @@ declare global {
       deleteRecurringTransaction: (id: string) => Promise<boolean>;
       toggleRecurringTransaction: (id: string, isActive: boolean) => Promise<boolean>;
       generateRecurringTransactions: () => Promise<number>;
+      // Investment APIs
+      getInvestmentAccounts: () => Promise<Array<{
+        id: string;
+        name: string;
+        type: 'stock' | 'fund' | 'crypto';
+        symbol?: string;
+        currentPrice: number;
+        shares: number;
+        costBasis: number;
+        totalValue: number;
+        totalCost: number;
+        gain: number;
+        gainPercentage: number;
+        created_at: string;
+        updated_at: string;
+      }>>;
+      addInvestmentAccount: (data: object) => Promise<boolean>;
+      updateInvestmentAccount: (data: object) => Promise<boolean>;
+      updateInvestmentPrice: (id: string, currentPrice: number) => Promise<boolean>;
+      deleteInvestmentAccount: (id: string) => Promise<boolean>;
+      getInvestmentTransactions: (accountId?: string) => Promise<Array<{
+        id: string;
+        account_id: string;
+        type: 'buy' | 'sell';
+        shares: number;
+        price: number;
+        amount: number;
+        date: string;
+        notes?: string;
+        created_at: string;
+      }>>;
+      addInvestmentTransaction: (data: object) => Promise<boolean>;
+      deleteInvestmentTransaction: (id: string) => Promise<boolean>;
+      getInvestmentSummary: () => Promise<{
+        totalCost: number;
+        totalValue: number;
+        totalGain: number;
+        gainPercentage: number;
+      }>;
+      // Savings Goals APIs
+      getSavingsGoals: () => Promise<Array<{
+        id: string;
+        name: string;
+        targetAmount: number;
+        currentAmount: number;
+        deadline?: string;
+        category?: string;
+        priority: 'low' | 'medium' | 'high';
+        isActive: boolean;
+        created_at: string;
+        updated_at: string;
+      }>>;
+      addSavingsGoal: (data: object) => Promise<boolean>;
+      updateSavingsGoal: (data: object) => Promise<boolean>;
+      addToSavingsGoal: (id: string, amount: number) => Promise<boolean>;
+      deleteSavingsGoal: (id: string) => Promise<boolean>;
+      getSavingsSummary: () => Promise<{
+        totalTarget: number;
+        totalCurrent: number;
+        totalRemaining: number;
+        completedGoals: number;
+        totalGoals: number;
+      }>;
+      // Mark-as-zero APIs
+      markAsZero: (source: string, month: string) => Promise<boolean>;
+      unmarkAsZero: (source: string, month: string) => Promise<boolean>;
+      isMarkedAsZero: (source: string, month: string) => Promise<boolean>;
+      getMarkedAsZero: (year: number) => Promise<Array<{ source: string; month: string; markedAt: string }>>;
+      // Reminder APIs
+      getReminderConfig: () => Promise<{
+        budgetAlerts: boolean;
+        budgetThreshold: number;
+        recurringReminders: boolean;
+        importReminders: boolean;
+        importReminderDay: number;
+      }>;
+      setReminderConfig: (config: {
+        budgetAlerts?: boolean;
+        budgetThreshold?: number;
+        recurringReminders?: boolean;
+        importReminders?: boolean;
+        importReminderDay?: number;
+      }) => Promise<boolean>;
+      testReminder: (type: 'budget' | 'recurring' | 'import') => Promise<boolean>;
     };
   }
 }
@@ -194,7 +304,7 @@ export default function App() {
             <button
               key={item.page}
               onClick={() => navigate(item.page)}
-              className={`${currentPage === item.page ? 'active' : ''} ${item.highlight ? 'highlight' : ''}`}
+              className={`${currentPage === item.page ? 'active' : ''} ${(item as { highlight?: boolean }).highlight ? 'highlight' : ''}`}
             >
               <span className="icon">{item.icon}</span>
               <span>{item.label}</span>

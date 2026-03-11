@@ -6,11 +6,17 @@ interface InvestmentAccount {
   type: 'stock' | 'fund' | 'bond' | 'crypto';
   symbol?: string;
   shares: number;
-  cost_basis: number;
-  current_price: number;
-  currency: string;
+  costBasis: number;
+  currentPrice: number;
+  currency?: string;
   broker?: string;
   notes?: string;
+  totalValue: number;
+  totalCost: number;
+  gain: number;
+  gainPercentage: number;
+  created_at: string;
+  updated_at: string;
 }
 
 interface InvestmentTransaction {
@@ -20,9 +26,10 @@ interface InvestmentTransaction {
   shares: number;
   price: number;
   amount: number;
-  fee: number;
+  fee?: number;
   date: string;
   notes?: string;
+  created_at: string;
 }
 
 interface InvestmentSummary {
@@ -31,13 +38,6 @@ interface InvestmentSummary {
   totalGain: number;
   gainPercentage: number;
 }
-
-const TYPE_LABELS: Record<string, string> = {
-  stock: '股票',
-  fund: '基金',
-  bond: '债券',
-  crypto: '加密货币',
-};
 
 const TYPE_ICONS: Record<string, string> = {
   stock: '📈',
@@ -53,7 +53,6 @@ export default function Investments() {
   const [loading, setLoading] = useState(true);
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [showTransactionForm, setShowTransactionForm] = useState(false);
-  const [selectedAccount, setSelectedAccount] = useState<string | null>(null);
 
   // Form states
   const [accountForm, setAccountForm] = useState({
@@ -365,10 +364,10 @@ export default function Investments() {
         ) : (
           <div className="investment-list">
             {accounts.map((account) => {
-              const currentValue = account.shares * account.current_price;
-              const costValue = account.shares * account.cost_basis;
+              const currentValue = account.shares * account.currentPrice;
+              const costValue = account.shares * account.costBasis;
               const gain = currentValue - costValue;
-              const gainPercent = account.cost_basis > 0 ? (gain / costValue) * 100 : 0;
+              const gainPercent = account.costBasis > 0 ? (gain / costValue) * 100 : 0;
 
               return (
                 <div key={account.id} className="investment-item" style={{
@@ -385,7 +384,7 @@ export default function Investments() {
                       <span style={{ fontSize: '12px', color: '#6B7280' }}>({account.symbol})</span>
                     </div>
                     <div style={{ fontSize: '13px', color: '#6B7280' }}>
-                      持仓: {account.shares.toFixed(4)} 股 | 成本: {formatCurrency(account.cost_basis)} |
+                      持仓: {account.shares.toFixed(4)} 股 | 成本: {formatCurrency(account.costBasis)} |
                       市值: {formatCurrency(currentValue)}
                     </div>
                     {account.shares > 0 && (
@@ -403,7 +402,7 @@ export default function Investments() {
                       type="number"
                       step="0.01"
                       placeholder="现价"
-                      defaultValue={account.current_price || ''}
+                      defaultValue={account.currentPrice || ''}
                       onBlur={(e) => handleUpdatePrice(account.id, e.target.value)}
                       style={{ width: '80px', padding: '4px 8px', fontSize: '13px' }}
                     />

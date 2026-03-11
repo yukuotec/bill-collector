@@ -16,7 +16,7 @@ const MEMBER_COLORS = [
   '#6366F1', // indigo
 ];
 
-export default function Members({ locationSearch }: MembersProps) {
+export default function Members({ locationSearch: _locationSearch }: MembersProps) {
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingMember, setEditingMember] = useState<Member | null>(null);

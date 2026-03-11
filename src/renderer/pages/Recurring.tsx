@@ -33,13 +33,6 @@ interface Account {
   type: string;
 }
 
-const FREQUENCY_LABELS: Record<string, string> = {
-  daily: '每天',
-  weekly: '每周',
-  monthly: '每月',
-  yearly: '每年',
-};
-
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
 
 export default function Recurring() {

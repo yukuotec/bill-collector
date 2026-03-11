@@ -35,7 +35,6 @@ export default function AssignTransactions() {
   // Search and multi-select
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [showBatchActions, setShowBatchActions] = useState(false);
 
   // Fetch unassigned transactions
   const fetchUnassignedTransactions = useCallback(async () => {

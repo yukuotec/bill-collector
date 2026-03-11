@@ -34,17 +34,6 @@ const TYPE_LABELS: Record<string, string> = {
   transfer: '转账',
 };
 
-const MEMBER_COLORS = [
-  '#3B82F6', // blue
-  '#10B981', // green
-  '#EF4444', // red
-  '#8B5CF6', // purple
-  '#F59E0B', // orange
-  '#EC4899', // pink
-  '#14B8A6', // teal
-  '#6366F1', // indigo
-];
-
 // Helper functions to calculate date ranges
 function getStartOfWeek(date: Date): Date {
   const d = new Date(date);
@@ -190,12 +179,8 @@ interface SearchStatsPanelProps {
   filter: FilterState;
 }
 
-function SearchStatsPanel({ transactions, filter }: SearchStatsPanelProps) {
+function SearchStatsPanel({ transactions, filter: _filter }: SearchStatsPanelProps) {
   // Only show when there are transactions and filter is applied
-  const hasFilter = filter.q || filter.category || filter.merchant || filter.source ||
-                    filter.type || filter.memberId || filter.accountId ||
-                    filter.startDate || filter.endDate;
-
   if (transactions.length === 0) return null;
 
   const stats = transactions.reduce(
@@ -390,7 +375,6 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [tempNotes, setTempNotes] = useState('');
   const [editableTags, setEditableTags] = useState<string | null>(null);
   const [tempTags, setTempTags] = useState('');
-  const [editableMember, setEditableMember] = useState<string | null>(null);
   const [pendingMemberAssignment, setPendingMemberAssignment] = useState<{
     transaction: Transaction;
     memberId: string;
@@ -399,6 +383,7 @@ export default function Transactions({ locationSearch, onReplaceSearch }: Transa
   const [selectedDuplicateIds, setSelectedDuplicateIds] = useState<Set<string>>(new Set());
   const tagsInputRef = useRef<HTMLInputElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const inputRef = useRef<HTMLInputElement>(null);
   const defaultThisMonth = getThisMonthRange();
   const [filter, setFilter] = useState<FilterState>({
     startDate: defaultThisMonth.startDate,

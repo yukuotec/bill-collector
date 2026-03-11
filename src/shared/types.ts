@@ -28,7 +28,7 @@ export interface AccountSummary {
 
 export interface Transaction {
   id: string;
-  source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
+  source: 'alipay' | 'wechat' | 'yunshanfu' | 'bank' | 'manual';
   import_id?: string | null;
   original_source?: string;
   original_id?: string;

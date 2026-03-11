@@ -4,12 +4,13 @@ import { CATEGORIES } from '../../shared/constants';
 interface SavingsGoal {
   id: string;
   name: string;
-  target_amount: number;
-  current_amount: number;
+  targetAmount: number;
+  currentAmount: number;
   deadline?: string;
   category?: string;
   color?: string;
-  is_active: boolean;
+  isActive: boolean;
+  priority: 'low' | 'medium' | 'high';
   created_at: string;
   updated_at: string;
 }
@@ -46,6 +47,7 @@ export default function SavingsGoals() {
     deadline: '',
     category: '',
     color: GOAL_COLORS[0],
+    priority: 'medium' as 'low' | 'medium' | 'high',
   });
 
   useEffect(() => {
@@ -80,13 +82,16 @@ export default function SavingsGoals() {
         id: `goal-${Date.now()}`,
         name: formData.name,
         targetAmount: target,
+        currentAmount: 0,
         deadline: formData.deadline || null,
         category: formData.category,
         color: formData.color,
+        priority: formData.priority,
+        isActive: true,
       });
       await loadData();
       setShowForm(false);
-      setFormData({ name: '', targetAmount: '', deadline: '', category: '', color: GOAL_COLORS[0] });
+      setFormData({ name: '', targetAmount: '', deadline: '', category: '', color: GOAL_COLORS[0], priority: 'medium' });
     } catch (error) {
       console.error('Failed to add goal:', error);
     }
@@ -253,8 +258,8 @@ export default function SavingsGoals() {
           </div>
         ) : (
           goals.map((goal) => {
-            const progress = getProgress(goal.current_amount, goal.target_amount);
-            const isCompleted = goal.current_amount >= goal.target_amount;
+            const progress = getProgress(goal.currentAmount, goal.targetAmount);
+            const isCompleted = goal.currentAmount >= goal.targetAmount;
             const daysRemaining = getDaysRemaining(goal.deadline);
 
             return (
@@ -318,13 +323,13 @@ export default function SavingsGoals() {
                     <div>
                       <div style={{ fontSize: '12px', color: '#6B7280' }}>已存</div>
                       <div style={{ fontSize: '18px', fontWeight: 600, color: '#10B981' }}>
-                        {formatCurrency(goal.current_amount)}
+                        {formatCurrency(goal.currentAmount)}
                       </div>
                     </div>
                     <div style={{ textAlign: 'right' }}>
                       <div style={{ fontSize: '12px', color: '#6B7280' }}>目标</div>
                       <div style={{ fontSize: '18px', fontWeight: 600 }}>
-                        {formatCurrency(goal.target_amount)}
+                        {formatCurrency(goal.targetAmount)}
                       </div>
                     </div>
                   </div>

@@ -13,6 +13,7 @@ import { parseYunshanfu } from '../parsers/yunshanfu';
 import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
+import { generatePDFReport } from './export';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -1266,14 +1267,25 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     }
   });
 
-  ipcMain.handle('export-csv', async (_, ids?: string[]) => {
+  ipcMain.handle('export-csv', async (_, ids?: string[], startDate?: string, endDate?: string) => {
     try {
       let transactions;
       if (ids && ids.length > 0) {
         const placeholders = ids.map(() => '?').join(',');
         transactions = queryAll(`SELECT * FROM transactions WHERE id IN (${placeholders}) ORDER BY date DESC, created_at DESC`, ids);
       } else {
-        transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+        let query = 'SELECT * FROM transactions';
+        const params: string[] = [];
+        if (startDate) {
+          query += ' WHERE date >= ?';
+          params.push(startDate);
+        }
+        if (endDate) {
+          query += startDate ? ' AND date <= ?' : ' WHERE date <= ?';
+          params.push(endDate);
+        }
+        query += ' ORDER BY date DESC, created_at DESC';
+        transactions = queryAll(query, params);
       }
       const result = await dialog.showSaveDialog({
         filters: [{ name: 'CSV Files', extensions: ['csv'] }],
@@ -1290,9 +1302,20 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
     }
   });
 
-  ipcMain.handle('export-excel', async () => {
+  ipcMain.handle('export-excel', async (_, startDate?: string, endDate?: string) => {
     try {
-      const transactions = queryAll('SELECT * FROM transactions ORDER BY date DESC, created_at DESC');
+      let query = 'SELECT * FROM transactions';
+      const params: string[] = [];
+      if (startDate) {
+        query += ' WHERE date >= ?';
+        params.push(startDate);
+      }
+      if (endDate) {
+        query += startDate ? ' AND date <= ?' : ' WHERE date <= ?';
+        params.push(endDate);
+      }
+      query += ' ORDER BY date DESC, created_at DESC';
+      const transactions = queryAll(query, params);
       const result = await dialog.showSaveDialog({
         filters: [{ name: 'Excel Files', extensions: ['xlsx'] }],
         defaultPath: `expenses-${new Date().toISOString().split('T')[0]}.xlsx`,
@@ -1303,6 +1326,84 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return result.filePath;
     } catch (error) {
       console.error('[IPC Error] export-excel:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('export-pdf', async (_, startDate?: string, endDate?: string) => {
+    try {
+      // Get transactions
+      let txnQuery = 'SELECT * FROM transactions';
+      const txnParams: string[] = [];
+      if (startDate) {
+        txnQuery += ' WHERE date >= ?';
+        txnParams.push(startDate);
+      }
+      if (endDate) {
+        txnQuery += startDate ? ' AND date <= ?' : ' WHERE date <= ?';
+        txnParams.push(endDate);
+      }
+      txnQuery += ' ORDER BY date DESC';
+      const transactions = queryAll(txnQuery, txnParams);
+
+      // Get category summary
+      let catQuery = `SELECT category, SUM(amount) as total, COUNT(*) as count FROM transactions WHERE type = 'expense'`;
+      const catParams: string[] = [];
+      if (startDate) {
+        catQuery += ' AND date >= ?';
+        catParams.push(startDate);
+      }
+      if (endDate) {
+        catQuery += ' AND date <= ?';
+        catParams.push(endDate);
+      }
+      catQuery += ' GROUP BY category ORDER BY total DESC';
+      const categorySummary = (queryAll(catQuery, catParams) as Array<{ category: string | null; total: number; count: number }>).map((r) => ({
+        category: r.category || '未分类',
+        total: r.total,
+        count: r.count,
+      }));
+
+      // Get monthly summary
+      let monthQuery = `SELECT strftime('%Y-%m', date) as month,
+        SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
+        SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expense
+        FROM transactions`;
+      const monthParams: string[] = [];
+      if (startDate) {
+        monthQuery += ' WHERE date >= ?';
+        monthParams.push(startDate);
+      }
+      if (endDate) {
+        monthQuery += startDate ? ' AND date <= ?' : ' WHERE date <= ?';
+        monthParams.push(endDate);
+      }
+      monthQuery += ' GROUP BY month ORDER BY month';
+      const monthlySummary = (queryAll(monthQuery, monthParams) as Array<{ month: string; income: number | null; expense: number | null }>).map((r) => ({
+        month: r.month,
+        income: r.income || 0,
+        expense: r.expense || 0,
+        net: (r.income || 0) - (r.expense || 0),
+      }));
+
+      const result = await dialog.showSaveDialog({
+        filters: [{ name: 'PDF Files', extensions: ['pdf'] }],
+        defaultPath: `expenses-report-${new Date().toISOString().split('T')[0]}.pdf`,
+      });
+      if (result.canceled || !result.filePath) return null;
+
+      await generatePDFReport(result.filePath, {
+        transactions: transactions as Array<{ id: string; date: string; amount: number; type: 'expense' | 'income' | 'transfer'; category?: string; counterparty?: string; description?: string; source: string }>,
+        categorySummary,
+        monthlySummary,
+        startDate: startDate || '最早',
+        endDate: endDate || '最新',
+        generatedAt: new Date().toLocaleString('zh-CN'),
+      });
+
+      return result.filePath;
+    } catch (error) {
+      console.error('[IPC Error] export-pdf:', error);
       throw error;
     }
   });

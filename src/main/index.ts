@@ -2,6 +2,7 @@ import { app, BrowserWindow, ipcMain, dialog } from 'electron';
 import path from 'path';
 import { closeDatabase, initDatabase } from './database';
 import { setupIpcHandlers } from './ipc';
+import { initializeReminders, stopReminders } from './reminders';
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -24,9 +25,12 @@ function createWindow() {
   } else {
     mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'));
   }
-  
+
   // Set a flag in the renderer that we're in Electron
   mainWindow.webContents.executeJavaScript(`window.__IS_ELECTRON = true;`);
+
+  // Initialize reminders system
+  initializeReminders(mainWindow);
 
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -52,5 +56,6 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  stopReminders();
   closeDatabase();
 });

@@ -10,7 +10,7 @@ export default function Export() {
     setExporting(true);
     setMessage('');
     try {
-      const filePath = await window.electronAPI.exportCSV();
+      const filePath = await window.electronAPI.exportCSV(undefined, startDate || undefined, endDate || undefined);
       if (filePath) {
         setMessage(`✅ 导出成功: ${filePath}`);
       }
@@ -25,12 +25,27 @@ export default function Export() {
     setExporting(true);
     setMessage('');
     try {
-      const filePath = await window.electronAPI.exportExcel();
+      const filePath = await window.electronAPI.exportExcel(startDate || undefined, endDate || undefined);
       if (filePath) {
         setMessage(`✅ 导出成功: ${filePath}`);
       }
     } catch (error) {
       setMessage('❌ 导出失败');
+    } finally {
+      setExporting(false);
+    }
+  };
+
+  const handleExportPDF = async () => {
+    setExporting(true);
+    setMessage('');
+    try {
+      const filePath = await window.electronAPI.exportPDF(startDate || undefined, endDate || undefined);
+      if (filePath) {
+        setMessage(`✅ PDF导出成功: ${filePath}`);
+      }
+    } catch (error) {
+      setMessage('❌ PDF导出失败');
     } finally {
       setExporting(false);
     }
@@ -91,10 +106,11 @@ export default function Export() {
 
             <button
               className="btn-secondary"
-              disabled={true}
-              style={{ justifyContent: 'center', padding: '12px', opacity: 0.5 }}
+              onClick={handleExportPDF}
+              disabled={exporting}
+              style={{ justifyContent: 'center', padding: '12px' }}
             >
-              📑 PDF报表 (即将推出)
+              📑 PDF报表
             </button>
 
             <button
@@ -133,6 +149,7 @@ export default function Export() {
             <ul style={{ margin: 0, paddingLeft: '20px' }}>
               <li>CSV格式：通用格式，可用Excel、Numbers等打开</li>
               <li>Excel格式：保留样式和格式的原生Excel文件</li>
+              <li>PDF报表：包含统计图表和交易明细的完整财务报告</li>
               <li>不选择日期范围将导出所有数据</li>
               <li>导出的文件保存路径可自定义选择</li>
             </ul>

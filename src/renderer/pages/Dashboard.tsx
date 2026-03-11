@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { BudgetAlert, Summary } from '../../shared/types';
 import { DrilldownQuery, getYearDateRange } from '../../shared/drilldown';
 import { PieChart, Pie, Cell, LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, BarChart, Bar } from 'recharts';
-import { SOURCES, SourceId } from '../../shared/sources';
+import { SOURCES } from '../../shared/sources';
 
 // Transaction Template interface (synced with QuickAdd)
 interface TransactionTemplate {
@@ -148,7 +148,7 @@ function QuickActionsWidget({ onDrilldown }: QuickActionsWidgetProps) {
   };
 
   const handleViewTransactions = (filter: { category?: string; counterparty?: string }) => {
-    const query: DrilldownQuery = { drill: 'transactions' };
+    const query: DrilldownQuery = { drill: true };
     if (filter.category) query.category = filter.category;
     if (filter.counterparty) query.merchant = filter.counterparty;
     onDrilldown(query);
@@ -274,7 +274,7 @@ function QuickActionsWidget({ onDrilldown }: QuickActionsWidgetProps) {
         </div>
         <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
           <button
-            onClick={() => onDrilldown({ drill: 'transactions', from: new Date().toISOString().slice(0, 7) + '-01' })}
+            onClick={() => onDrilldown({ drill: true, from: new Date().toISOString().slice(0, 7) + '-01' })}
             style={{
               padding: '4px 10px',
               background: '#EFF6FF',
@@ -288,7 +288,7 @@ function QuickActionsWidget({ onDrilldown }: QuickActionsWidgetProps) {
             📅 本月交易
           </button>
           <button
-            onClick={() => onDrilldown({ drill: 'transactions', category: '餐饮' })}
+            onClick={() => onDrilldown({ drill: true, category: '餐饮' })}
             style={{
               padding: '4px 10px',
               background: '#F0FDF4',
@@ -302,7 +302,7 @@ function QuickActionsWidget({ onDrilldown }: QuickActionsWidgetProps) {
             🍽️ 餐饮支出
           </button>
           <button
-            onClick={() => onDrilldown({ drill: 'transactions', category: '购物' })}
+            onClick={() => onDrilldown({ drill: true, category: '购物' })}
             style={{
               padding: '4px 10px',
               background: '#FDF2F8',
@@ -344,7 +344,7 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
   const [loading, setLoading] = useState<boolean>(true);
   const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendData[]>([]);
   const [currentMonth, setCurrentMonth] = useState<string>('');
-  const [previousMonth, setPreviousMonth] = useState<string>('');
+  const [, setPreviousMonth] = useState<string>('');
   const [sourceCoverage, setSourceCoverage] = useState<SourceCoverageWidgetItem[]>([]);
   const [lastImports, setLastImports] = useState<LastImportItem[]>([]);
 
@@ -500,8 +500,6 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
   };
 
   const missingSourcesCount = SOURCES.filter(s => getSourceStatus(s.id).status === 'missing').length;
-  const currentMonthStr = new Date().toISOString().slice(0, 7);
-  const hasCurrentMonthData = sourceCoverage.some(c => c.month === currentMonthStr);
 
   if (loading && !summary) return <div>加载中...</div>;
   if (!summary) return <div>暂无数据</div>;
@@ -621,7 +619,7 @@ export default function Dashboard({ onDrilldown }: DashboardProps) {
           </div>
           <div className="source-mini-list">
             {SOURCES.map((source) => {
-              const { count, status } = getSourceStatus(source.id);
+              const { status } = getSourceStatus(source.id);
               return (
                 <div key={source.id} className={`mini-source-item ${status}`}>
                   <span className="mini-source-name">{source.name}</span>

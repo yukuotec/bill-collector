@@ -73,6 +73,7 @@ const webAPI = {
   deleteTransactionsByIds: () => Promise.resolve({ deleted: 0 }),
   exportCSV: () => Promise.resolve(null),
   exportExcel: () => Promise.resolve(null),
+  exportPDF: () => Promise.resolve(null),
   backupDatabase: () => Promise.resolve(null),
   getBudgets: () => Promise.resolve([]),
   setBudget: () => Promise.resolve(true),
@@ -140,6 +141,20 @@ const webAPI = {
   addToSavingsGoal: () => Promise.resolve(true),
   deleteSavingsGoal: () => Promise.resolve(true),
   getSavingsSummary: () => Promise.resolve({ totalTarget: 0, totalCurrent: 0, totalRemaining: 0, completedGoals: 0, totalGoals: 0 }),
+  // Email APIs (web fallback)
+  getEmailAccounts: () => Promise.resolve([]),
+  addEmailAccount: () => Promise.resolve(true),
+  deleteEmailAccount: () => Promise.resolve(true),
+  // Reminder APIs (web fallback)
+  getReminderConfig: () => Promise.resolve({
+    budgetAlerts: true,
+    budgetThreshold: 80,
+    recurringReminders: true,
+    importReminders: true,
+    importReminderDay: 5,
+  }),
+  setReminderConfig: () => Promise.resolve(true),
+  testReminder: () => Promise.resolve(true),
 };
 
 const electronAPI = {
@@ -155,8 +170,9 @@ const electronAPI = {
   updateNotes: (id: string, notes: string) => ipcRenderer.invoke('update-notes', id, notes),
   deleteTransaction: (id: string) => ipcRenderer.invoke('delete-transaction', id),
   deleteTransactionsByIds: (ids: string[]) => ipcRenderer.invoke('delete-transactions-by-ids', ids),
-  exportCSV: (ids?: string[]) => ipcRenderer.invoke('export-csv', ids),
-  exportExcel: () => ipcRenderer.invoke('export-excel'),
+  exportCSV: (ids?: string[], startDate?: string, endDate?: string) => ipcRenderer.invoke('export-csv', ids, startDate, endDate),
+  exportExcel: (startDate?: string, endDate?: string) => ipcRenderer.invoke('export-excel', startDate, endDate),
+  exportPDF: (startDate?: string, endDate?: string) => ipcRenderer.invoke('export-pdf', startDate, endDate),
   backupDatabase: () => ipcRenderer.invoke('backup-database'),
   getBudgets: (): Promise<Budget[]> => ipcRenderer.invoke('get-budgets'),
   setBudget: (id: string, yearMonth: string, amount: number, category: string | null) => ipcRenderer.invoke('set-budget', id, yearMonth, amount, category),
@@ -287,6 +303,16 @@ const electronAPI = {
   addToSavingsGoal: (id: string, amount: number) => ipcRenderer.invoke('add-to-savings-goal', id, amount),
   deleteSavingsGoal: (id: string) => ipcRenderer.invoke('delete-savings-goal', id),
   getSavingsSummary: () => ipcRenderer.invoke('get-savings-summary'),
+
+  // Email APIs
+  getEmailAccounts: () => ipcRenderer.invoke('get-email-accounts'),
+  addEmailAccount: (data: object) => ipcRenderer.invoke('add-email-account', data),
+  deleteEmailAccount: (id: string) => ipcRenderer.invoke('delete-email-account', id),
+
+  // Reminder APIs
+  getReminderConfig: () => ipcRenderer.invoke('get-reminder-config'),
+  setReminderConfig: (config: object) => ipcRenderer.invoke('set-reminder-config', config),
+  testReminder: (type: string) => ipcRenderer.invoke('test-reminder', type),
 };
 
 // Export the appropriate API based on environment

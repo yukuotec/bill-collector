@@ -5,6 +5,7 @@ interface ReminderSettings {
   budgetThreshold: number;
   recurringReminder: boolean;
   importReminder: boolean;
+  importReminderDay: number;
   dailySummary: boolean;
 }
 
@@ -14,32 +15,67 @@ export default function Reminders() {
     budgetThreshold: 80,
     recurringReminder: true,
     importReminder: true,
+    importReminderDay: 5,
     dailySummary: false,
   });
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState('');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    // Load saved settings from localStorage
-    const saved = localStorage.getItem('expense-reminder-settings');
-    if (saved) {
+    // Load settings from backend
+    const loadSettings = async () => {
       try {
-        setSettings(JSON.parse(saved));
+        const config = await window.electronAPI.getReminderConfig();
+        setSettings({
+          budgetAlert: config.budgetAlerts,
+          budgetThreshold: config.budgetThreshold,
+          recurringReminder: config.recurringReminders,
+          importReminder: config.importReminders,
+          importReminderDay: config.importReminderDay,
+          dailySummary: false, // Not yet implemented in backend
+        });
       } catch (e) {
         console.error('Failed to load reminder settings:', e);
+      } finally {
+        setLoading(false);
       }
-    }
+    };
+    loadSettings();
   }, []);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     setSaving(true);
-    localStorage.setItem('expense-reminder-settings', JSON.stringify(settings));
-    setTimeout(() => {
-      setSaving(false);
+    try {
+      await window.electronAPI.setReminderConfig({
+        budgetAlerts: settings.budgetAlert,
+        budgetThreshold: settings.budgetThreshold,
+        recurringReminders: settings.recurringReminder,
+        importReminders: settings.importReminder,
+        importReminderDay: settings.importReminderDay,
+      });
       setMessage('✅ 设置已保存');
+    } catch (error) {
+      setMessage('❌ 保存失败');
+    } finally {
+      setSaving(false);
       setTimeout(() => setMessage(''), 2000);
-    }, 500);
+    }
   };
+
+  const handleTestReminder = async (type: 'budget' | 'recurring' | 'import') => {
+    try {
+      await window.electronAPI.testReminder(type);
+      setMessage(`✅ ${type === 'budget' ? '预算' : type === 'recurring' ? '周期记账' : '导入'}提醒测试已发送`);
+    } catch (error) {
+      setMessage('❌ 测试失败');
+    }
+    setTimeout(() => setMessage(''), 3000);
+  };
+
+  if (loading) {
+    return <div>加载中...</div>;
+  }
 
   return (
     <div className="reminders-page">
@@ -216,6 +252,26 @@ export default function Reminders() {
                 </span>
               </label>
             </div>
+
+            {settings.importReminder && (
+              <div style={{ marginLeft: '20px', marginTop: '12px' }}>
+                <label style={{ fontSize: '13px', color: '#6B7280', display: 'block', marginBottom: '8px' }}>
+                  每月提醒日期: {settings.importReminderDay}号
+                </label>
+                <input
+                  type="range"
+                  min="1"
+                  max="28"
+                  value={settings.importReminderDay}
+                  onChange={(e) => setSettings({ ...settings, importReminderDay: parseInt(e.target.value) })}
+                  style={{ width: '100%' }}
+                />
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '12px', color: '#9CA3AF', marginTop: '4px' }}>
+                  <span>1号</span>
+                  <span>28号</span>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Daily Summary */}
@@ -288,6 +344,49 @@ export default function Reminders() {
               {message}
             </div>
           )}
+
+          {/* Test Buttons */}
+          <div style={{ marginTop: '24px', paddingTop: '24px', borderTop: '1px solid #E5E7EB' }}>
+            <h4 style={{ margin: '0 0 12px 0', fontSize: '14px', color: '#374151' }}>测试提醒</h4>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button
+                className="btn-secondary"
+                onClick={() => handleTestReminder('budget')}
+                style={{ flex: 1, padding: '8px', fontSize: '13px' }}
+              >
+                💰 预算提醒
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => handleTestReminder('recurring')}
+                style={{ flex: 1, padding: '8px', fontSize: '13px' }}
+              >
+                📅 周期记账
+              </button>
+              <button
+                className="btn-secondary"
+                onClick={() => handleTestReminder('import')}
+                style={{ flex: 1, padding: '8px', fontSize: '13px' }}
+              >
+                📥 导入提醒
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Features */}
+      <div className="card" style={{ marginTop: '24px', maxWidth: '600px' }}>
+        <div className="card-header">
+          <h3 className="card-title">已实现功能</h3>
+        </div>
+        <div style={{ padding: '20px' }}>
+          <ul style={{ margin: 0, paddingLeft: '20px', color: '#059669' }}>
+            <li>✅ 预算超支桌面通知</li>
+            <li>✅ 周期记账自动提醒</li>
+            <li>✅ 数据导入定期提醒</li>
+            <li>✅ 提醒设置云端同步</li>
+          </ul>
         </div>
       </div>
 
@@ -299,7 +398,6 @@ export default function Reminders() {
         <div style={{ padding: '20px' }}>
           <ul style={{ margin: 0, paddingLeft: '20px', color: '#6B7280' }}>
             <li>邮件通知</li>
-            <li>系统桌面通知</li>
             <li>微信/钉钉机器人集成</li>
             <li>自定义提醒规则</li>
             <li>提醒历史记录</li>
