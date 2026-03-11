@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -174,6 +174,8 @@ const webAPI = {
   learnCategory: () => Promise.resolve(true),
   getTrainingStats: () => Promise.resolve({ totalSamples: 0, samplesPerCategory: {}, lastTrainingDate: null } as CategoryTrainingStats),
   batchCategorize: () => Promise.resolve({ categorized: 0, suggestions: [] } as BatchCategorizeResult),
+  // NLP APIs (web fallback)
+  parseNLP: () => Promise.resolve({ action: 'unknown' } as ParsedCommand),
 };
 
 const electronAPI = {
@@ -360,6 +362,10 @@ const electronAPI = {
     ipcRenderer.invoke('get-training-stats'),
   batchCategorize: (dryRun?: boolean): Promise<BatchCategorizeResult> =>
     ipcRenderer.invoke('batch-categorize', dryRun),
+
+  // NLP APIs
+  parseNLP: (text: string): Promise<ParsedCommand> =>
+    ipcRenderer.invoke('parse-nlp', text),
 };
 
 // Export the appropriate API based on environment

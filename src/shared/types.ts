@@ -355,3 +355,21 @@ export interface BatchCategorizeResult {
     confidence: number;
   }>;
 }
+
+// NLP types
+export interface ParsedTransaction {
+  amount?: number;
+  description?: string;
+  merchant?: string;
+  category?: string;
+  date?: string;
+  type: 'expense' | 'income';
+  confidence: number;
+}
+
+export interface ParsedCommand {
+  action: 'add' | 'show' | 'query' | 'unknown';
+  target?: string;
+  filters?: Record<string, string>;
+  transaction?: ParsedTransaction;
+}

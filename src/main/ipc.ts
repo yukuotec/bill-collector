@@ -16,6 +16,7 @@ import { parseImageBillWithOcr } from '../parsers/ocr';
 import { generatePDFReport } from './export';
 import { generateCashFlowForecast, optimizeBillPaymentDate } from './cashflow';
 import { predictCategory, learnFromCorrection, getTrainingStats, batchCategorize } from './category-ml';
+import { parseNaturalLanguage, formatParsedTransaction } from './nlp';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -2207,6 +2208,16 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return batchCategorize(dryRun);
     } catch (error) {
       console.error('[IPC Error] batch-categorize:', error);
+      throw error;
+    }
+  });
+
+  // NLP IPC handlers
+  ipcMain.handle('parse-nlp', async (_, text: string) => {
+    try {
+      return parseNaturalLanguage(text);
+    } catch (error) {
+      console.error('[IPC Error] parse-nlp:', error);
       throw error;
     }
   });
