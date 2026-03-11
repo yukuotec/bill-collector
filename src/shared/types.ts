@@ -373,3 +373,19 @@ export interface ParsedCommand {
   filters?: Record<string, string>;
   transaction?: ParsedTransaction;
 }
+
+// Sync types
+export interface SyncDevice {
+  id: string;
+  name: string;
+  publicKey: string;
+  fingerprint: string;
+  pairedAt: string;
+  lastSyncAt?: string;
+}
+
+export interface SyncState {
+  lastSyncAt: string | null;
+  devices: SyncDevice[];
+  pendingChanges: number;
+}

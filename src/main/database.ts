@@ -346,6 +346,18 @@ function ensureSchema(): void {
   database.run('CREATE INDEX IF NOT EXISTS idx_training_category ON category_training_data(category)');
   database.run('CREATE INDEX IF NOT EXISTS idx_training_created ON category_training_data(created_at)');
 
+  // Sync devices table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS sync_devices (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      public_key TEXT NOT NULL,
+      fingerprint TEXT NOT NULL,
+      paired_at TEXT NOT NULL,
+      last_sync_at TEXT
+    )
+  `);
+
   const now = new Date().toISOString();
   database.run(
     `

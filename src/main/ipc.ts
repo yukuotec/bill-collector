@@ -17,6 +17,7 @@ import { generatePDFReport } from './export';
 import { generateCashFlowForecast, optimizeBillPaymentDate } from './cashflow';
 import { predictCategory, learnFromCorrection, getTrainingStats, batchCategorize } from './category-ml';
 import { parseNaturalLanguage, formatParsedTransaction } from './nlp';
+import { generateDeviceIdentity, getDeviceFingerprint, exportSyncFile, importSyncFile, getSyncStatus } from './sync';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -2218,6 +2219,34 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return parseNaturalLanguage(text);
     } catch (error) {
       console.error('[IPC Error] parse-nlp:', error);
+      throw error;
+    }
+  });
+
+  // Sync IPC handlers
+  ipcMain.handle('get-device-identity', async () => {
+    try {
+      return generateDeviceIdentity();
+    } catch (error) {
+      console.error('[IPC Error] get-device-identity:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-device-fingerprint', async (_, publicKey: string) => {
+    try {
+      return getDeviceFingerprint(publicKey);
+    } catch (error) {
+      console.error('[IPC Error] get-device-fingerprint:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-sync-status', async () => {
+    try {
+      return getSyncStatus();
+    } catch (error) {
+      console.error('[IPC Error] get-sync-status:', error);
       throw error;
     }
   });

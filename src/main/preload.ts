@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand, SyncState } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -176,6 +176,10 @@ const webAPI = {
   batchCategorize: () => Promise.resolve({ categorized: 0, suggestions: [] } as BatchCategorizeResult),
   // NLP APIs (web fallback)
   parseNLP: () => Promise.resolve({ action: 'unknown' } as ParsedCommand),
+  // Sync APIs (web fallback)
+  getDeviceIdentity: () => Promise.resolve({ id: '', publicKey: '', privateKey: '' }),
+  getDeviceFingerprint: () => Promise.resolve(''),
+  getSyncStatus: () => Promise.resolve({ lastSyncAt: null, devices: [], pendingChanges: 0 } as SyncState),
 };
 
 const electronAPI = {
@@ -366,6 +370,14 @@ const electronAPI = {
   // NLP APIs
   parseNLP: (text: string): Promise<ParsedCommand> =>
     ipcRenderer.invoke('parse-nlp', text),
+
+  // Sync APIs
+  getDeviceIdentity: (): Promise<{ id: string; publicKey: string; privateKey: string }> =>
+    ipcRenderer.invoke('get-device-identity'),
+  getDeviceFingerprint: (publicKey: string): Promise<string> =>
+    ipcRenderer.invoke('get-device-fingerprint', publicKey),
+  getSyncStatus: (): Promise<SyncState> =>
+    ipcRenderer.invoke('get-sync-status'),
 };
 
 // Export the appropriate API based on environment
