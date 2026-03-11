@@ -14,6 +14,7 @@ import { parsePdfBill } from '../parsers/pdf';
 import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
 import { generatePDFReport } from './export';
+import { generateCashFlowForecast, optimizeBillPaymentDate } from './cashflow';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -2147,6 +2148,26 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return getSavingsSummary();
     } catch (error) {
       console.error('[IPC Error] get-savings-summary:', error);
+      throw error;
+    }
+  });
+
+  // Cash Flow IPC handlers
+  ipcMain.handle('get-cashflow-forecast', async (_, accountId?: string, days?: number) => {
+    try {
+      return generateCashFlowForecast(accountId, days);
+    } catch (error) {
+      console.error('[IPC Error] get-cashflow-forecast:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('optimize-bill-payment', async (_, dueDate: string, amount: number) => {
+    try {
+      const forecast = await generateCashFlowForecast();
+      return optimizeBillPaymentDate(dueDate, amount, forecast);
+    } catch (error) {
+      console.error('[IPC Error] optimize-bill-payment:', error);
       throw error;
     }
   });

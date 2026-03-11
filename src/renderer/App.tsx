@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, EmailMessage } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, EmailMessage, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast } from '../shared/types';
 import { AppPage, buildDrilldownQuery, parseHashLocation } from '../shared/drilldown';
 import Dashboard from './pages/Dashboard';
 import Import from './pages/Import';
@@ -16,6 +16,7 @@ import Investments from './pages/Investments';
 import SavingsGoals from './pages/SavingsGoals';
 import Export from './pages/Export';
 import Reminders from './pages/Reminders';
+import { Receipts } from './pages/Receipts';
 
 declare global {
   interface Window {
@@ -261,6 +262,7 @@ const navItems = [
   { page: 'recurring', label: '周期记账', icon: '📅' },
   { page: 'investments', label: '投资追踪', icon: '📈' },
   { page: 'savings', label: '目标储蓄', icon: '🎯' },
+  { page: 'receipts', label: '收据管理', icon: '🧾' },
   { page: 'budgets', label: '预算', icon: '💵' },
   { page: 'accounts', label: '账户', icon: '💳' },
   { page: 'members', label: '成员', icon: '👨‍👩‍👧‍👦' },
@@ -341,6 +343,7 @@ export default function App() {
         {currentPage === 'savings' && <SavingsGoals />}
         {currentPage === 'export' && <Export />}
         {currentPage === 'reminders' && <Reminders />}
+        {currentPage === 'receipts' && <Receipts />}
       </main>
     </div>
   );

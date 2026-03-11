@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -155,6 +155,20 @@ const webAPI = {
   }),
   setReminderConfig: () => Promise.resolve(true),
   testReminder: () => Promise.resolve(true),
+  // Receipt APIs (web fallback)
+  uploadReceipt: () => Promise.resolve({ receipt: null, extracted: null, suggestedTransactions: [] } as unknown as ReceiptUploadResult),
+  getReceipt: () => Promise.resolve(null),
+  searchReceipts: () => Promise.resolve({ items: [], total: 0 }),
+  linkReceipt: () => Promise.resolve(true),
+  deleteReceipt: () => Promise.resolve(true),
+  selectReceiptFile: () => Promise.resolve(null),
+  // Cash Flow APIs (web fallback)
+  getCashFlowForecast: () => Promise.resolve({
+    predictions: [],
+    alerts: [],
+    summary: { startingBalance: 0, projectedLow: 0, projectedHigh: 0, averageDailyChange: 0, trendDirection: 'stable' }
+  } as CashFlowForecast),
+  optimizeBillPayment: () => Promise.resolve({ suggestedDate: new Date().toISOString().split('T')[0], reason: 'Fallback' }),
 };
 
 const electronAPI = {
@@ -313,6 +327,24 @@ const electronAPI = {
   getReminderConfig: () => ipcRenderer.invoke('get-reminder-config'),
   setReminderConfig: (config: object) => ipcRenderer.invoke('set-reminder-config', config),
   testReminder: (type: string) => ipcRenderer.invoke('test-reminder', type),
+
+  // Receipt APIs
+  uploadReceipt: (filePath: string, fileName: string): Promise<ReceiptUploadResult> =>
+    ipcRenderer.invoke('upload-receipt', filePath, fileName),
+  getReceipt: (id: string): Promise<ReceiptWithTransaction | null> =>
+    ipcRenderer.invoke('get-receipt', id),
+  searchReceipts: (query: ReceiptQuery): Promise<{ items: ReceiptWithTransaction[]; total: number }> =>
+    ipcRenderer.invoke('search-receipts', query),
+  linkReceipt: (receiptId: string, transactionId: string | null): Promise<boolean> =>
+    ipcRenderer.invoke('link-receipt', receiptId, transactionId),
+  deleteReceipt: (id: string): Promise<boolean> =>
+    ipcRenderer.invoke('delete-receipt', id),
+  selectReceiptFile: (): Promise<string | null> =>
+    ipcRenderer.invoke('select-receipt-file'),
+
+  // Cash Flow APIs
+  getCashFlowForecast: (accountId?: string, days?: number) => ipcRenderer.invoke('get-cashflow-forecast', accountId, days),
+  optimizeBillPayment: (dueDate: string, amount: number) => ipcRenderer.invoke('optimize-bill-payment', dueDate, amount),
 };
 
 // Export the appropriate API based on environment

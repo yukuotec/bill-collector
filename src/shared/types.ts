@@ -239,3 +239,95 @@ export interface EmailSyncResult {
   transactionsImported: number;
   errors: string[];
 }
+
+// Receipt types
+export interface Receipt {
+  id: string;
+  transaction_id?: string | null;
+  file_path: string;
+  thumbnail_path?: string | null;
+  file_name: string;
+  file_size?: number;
+  mime_type?: string;
+  ocr_text?: string;
+  ocr_confidence?: number;
+  amount_detected?: number;
+  date_detected?: string;
+  merchant_detected?: string;
+  items_detected?: string;
+  encrypted?: boolean | number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ReceiptWithTransaction extends Receipt {
+  transaction?: Transaction;
+}
+
+export interface ReceiptUploadResult {
+  receipt: Receipt;
+  extracted: ReceiptExtractedData;
+  suggestedTransactions: Transaction[];
+}
+
+export interface ReceiptExtractedData {
+  amount?: number;
+  date?: string;
+  merchant?: string;
+  items?: ReceiptItem[];
+  confidence: number;
+}
+
+export interface ReceiptItem {
+  name: string;
+  quantity?: number;
+  price?: number;
+  total?: number;
+}
+
+export interface ReceiptSearchResult {
+  receipt: ReceiptWithTransaction;
+  matchScore: number;
+  highlights: string[];
+}
+
+export interface ReceiptQuery {
+  q?: string;
+  transactionId?: string;
+  startDate?: string;
+  endDate?: string;
+  merchant?: string;
+  page?: number;
+  pageSize?: number;
+}
+
+// Cash Flow types
+export interface CashFlowPrediction {
+  date: string;
+  predictedBalance: number;
+  predictedIncome: number;
+  predictedExpense: number;
+  confidence: number;
+  factors: string[];
+}
+
+export interface CashFlowAlert {
+  type: 'overdraft' | 'low_balance' | 'high_expense' | 'bill_due';
+  date: string;
+  severity: 'info' | 'warning' | 'critical';
+  message: string;
+  suggestedAction?: string;
+  balance?: number;
+}
+
+export interface CashFlowForecast {
+  predictions: CashFlowPrediction[];
+  alerts: CashFlowAlert[];
+  summary: {
+    startingBalance: number;
+    projectedLow: number;
+    projectedHigh: number;
+    averageDailyChange: number;
+    trendDirection: 'up' | 'down' | 'stable';
+  };
+}
