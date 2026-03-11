@@ -434,3 +434,57 @@ export interface BackupInfo {
   size: number;
   description: string;
 }
+
+// Rounds 11-20 types
+export interface TrendAnalysis {
+  category: string;
+  currentMonth: number;
+  previousMonth: number;
+  changePercent: number;
+  trendDirection: 'up' | 'down' | 'stable';
+  average3Months: number;
+  projectedNextMonth: number;
+}
+
+export interface FraudAlert {
+  transactionId: string;
+  date: string;
+  amount: number;
+  merchant: string;
+  reason: string;
+  severity: 'low' | 'medium' | 'high';
+}
+
+export interface TaxReport {
+  year: number;
+  totalIncome: number;
+  totalExpense: number;
+  deductibleExpenses: Record<string, number>;
+  summary: {
+    medicalExpenses: number;
+    educationExpenses: number;
+    charitableDonations: number;
+    businessExpenses: number;
+  };
+}
+
+export interface MerchantProfile {
+  name: string;
+  totalSpent: number;
+  transactionCount: number;
+  averageTransaction: number;
+  firstPurchase: string;
+  lastPurchase: string;
+  categories: string[];
+  trend: 'increasing' | 'decreasing' | 'stable';
+}
+
+export interface FinancialInsight {
+  id: string;
+  type: 'spending' | 'saving' | 'warning' | 'tip';
+  title: string;
+  description: string;
+  actionText?: string;
+  actionData?: any;
+  priority: number;
+}

@@ -21,6 +21,16 @@ import { generateDeviceIdentity, getDeviceFingerprint, exportSyncFile, importSyn
 import { createTemplateFromTransaction, getTemplates, deleteTemplate, toggleFavorite } from './templates';
 import { runHealthCheck, fixIssue } from './health-check';
 import { createBackup, listBackups, restoreBackup, deleteBackup } from './backup';
+import { startScheduler, checkScheduledTasks } from './scheduler';
+import { analyzeCategoryTrends } from './trends';
+import { detectSuspiciousTransactions } from './fraud-detection';
+import { generateTaxReport } from './year-end';
+import { convertCurrency, getTransactionsInCurrency } from './multi-currency';
+import { calculateGoalProgress } from './goal-based-budget';
+import { getMerchantAnalytics } from './merchant-analytics';
+import { createDebt, getDebtSummary } from './debt-tracker';
+import { addToWishlist, getWishlistTotal } from './wishlist';
+import { generateInsights } from './insights';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -2316,6 +2326,98 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return restoreBackup(backupId);
     } catch (error) {
       console.error('[IPC Error] restore-backup:', error);
+      throw error;
+    }
+  });
+
+  // Rounds 11-20 IPC handlers
+  ipcMain.handle('check-scheduled-tasks', async () => {
+    try {
+      checkScheduledTasks();
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] check-scheduled-tasks:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('analyze-trends', async (_, months?: number) => {
+    try {
+      return analyzeCategoryTrends(months);
+    } catch (error) {
+      console.error('[IPC Error] analyze-trends:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('detect-fraud', async () => {
+    try {
+      return detectSuspiciousTransactions();
+    } catch (error) {
+      console.error('[IPC Error] detect-fraud:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('generate-tax-report', async (_, year: number) => {
+    try {
+      return generateTaxReport(year);
+    } catch (error) {
+      console.error('[IPC Error] generate-tax-report:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('convert-currency', async (_, amount: number, from: string, to: string) => {
+    try {
+      return convertCurrency(amount, from as any, to as any);
+    } catch (error) {
+      console.error('[IPC Error] convert-currency:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('calculate-goal-progress', async (_, goalId: string) => {
+    try {
+      return calculateGoalProgress(goalId);
+    } catch (error) {
+      console.error('[IPC Error] calculate-goal-progress:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-merchant-analytics', async (_, merchant: string) => {
+    try {
+      return getMerchantAnalytics(merchant);
+    } catch (error) {
+      console.error('[IPC Error] get-merchant-analytics:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-debt-summary', async () => {
+    try {
+      return getDebtSummary();
+    } catch (error) {
+      console.error('[IPC Error] get-debt-summary:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-wishlist-total', async () => {
+    try {
+      return getWishlistTotal();
+    } catch (error) {
+      console.error('[IPC Error] get-wishlist-total:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('generate-insights', async () => {
+    try {
+      return generateInsights();
+    } catch (error) {
+      console.error('[IPC Error] generate-insights:', error);
       throw error;
     }
   });

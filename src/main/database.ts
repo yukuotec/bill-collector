@@ -389,6 +389,38 @@ function ensureSchema(): void {
     )
   `);
 
+  // Debts table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS debts (
+      id TEXT PRIMARY KEY,
+      person TEXT NOT NULL,
+      amount REAL NOT NULL,
+      type TEXT NOT NULL,
+      description TEXT,
+      date TEXT NOT NULL,
+      due_date TEXT,
+      is_settled INTEGER DEFAULT 0,
+      settled_at TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  // Wishlist table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS wishlist (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      description TEXT,
+      estimated_price REAL NOT NULL,
+      priority TEXT NOT NULL,
+      category TEXT,
+      url TEXT,
+      added_at TEXT NOT NULL,
+      purchased INTEGER DEFAULT 0,
+      purchased_at TEXT
+    )
+  `);
+
   const now = new Date().toISOString();
   database.run(
     `

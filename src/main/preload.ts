@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand, SyncState, TransactionTemplate, HealthReport, BackupInfo } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult, ParsedCommand, SyncState, TransactionTemplate, HealthReport, BackupInfo, TrendAnalysis, FraudAlert, TaxReport, MerchantProfile, FinancialInsight } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -190,6 +190,17 @@ const webAPI = {
   createBackup: () => Promise.resolve({ id: '', filePath: '', createdAt: '', size: 0, description: '' } as BackupInfo),
   listBackups: () => Promise.resolve([]),
   restoreBackup: () => Promise.resolve(false),
+  // Rounds 11-20 APIs (web fallback)
+  checkScheduledTasks: () => Promise.resolve(true),
+  analyzeTrends: () => Promise.resolve([]),
+  detectFraud: () => Promise.resolve([]),
+  generateTaxReport: () => Promise.resolve({ year: 2024, totalIncome: 0, totalExpense: 0, deductibleExpenses: {}, summary: { medicalExpenses: 0, educationExpenses: 0, charitableDonations: 0, businessExpenses: 0 } } as TaxReport),
+  convertCurrency: () => Promise.resolve(0),
+  calculateGoalProgress: () => Promise.resolve(null),
+  getMerchantAnalytics: () => Promise.resolve(null),
+  getDebtSummary: () => Promise.resolve({ totalOwed: 0, totalOwing: 0, net: 0 }),
+  getWishlistTotal: () => Promise.resolve({ total: 0, byPriority: {} }),
+  generateInsights: () => Promise.resolve([]),
 };
 
 const electronAPI = {
@@ -408,6 +419,28 @@ const electronAPI = {
     ipcRenderer.invoke('list-backups'),
   restoreBackup: (backupId: string): Promise<boolean> =>
     ipcRenderer.invoke('restore-backup', backupId),
+
+  // Rounds 11-20 APIs
+  checkScheduledTasks: (): Promise<boolean> =>
+    ipcRenderer.invoke('check-scheduled-tasks'),
+  analyzeTrends: (months?: number): Promise<TrendAnalysis[]> =>
+    ipcRenderer.invoke('analyze-trends', months),
+  detectFraud: (): Promise<FraudAlert[]> =>
+    ipcRenderer.invoke('detect-fraud'),
+  generateTaxReport: (year: number): Promise<TaxReport> =>
+    ipcRenderer.invoke('generate-tax-report', year),
+  convertCurrency: (amount: number, from: string, to: string): Promise<number> =>
+    ipcRenderer.invoke('convert-currency', amount, from, to),
+  calculateGoalProgress: (goalId: string): Promise<any> =>
+    ipcRenderer.invoke('calculate-goal-progress', goalId),
+  getMerchantAnalytics: (merchant: string): Promise<MerchantProfile | null> =>
+    ipcRenderer.invoke('get-merchant-analytics', merchant),
+  getDebtSummary: (): Promise<{ totalOwed: number; totalOwing: number; net: number }> =>
+    ipcRenderer.invoke('get-debt-summary'),
+  getWishlistTotal: (): Promise<{ total: number; byPriority: Record<string, number> }> =>
+    ipcRenderer.invoke('get-wishlist-total'),
+  generateInsights: (): Promise<FinancialInsight[]> =>
+    ipcRenderer.invoke('generate-insights'),
 };
 
 // Export the appropriate API based on environment
