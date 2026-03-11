@@ -330,6 +330,22 @@ function ensureSchema(): void {
 
   database.run('CREATE INDEX IF NOT EXISTS idx_savings_active ON savings_goals(is_active)');
 
+  // Category training data table
+  database.run(`
+    CREATE TABLE IF NOT EXISTS category_training_data (
+      id TEXT PRIMARY KEY,
+      merchant TEXT,
+      description TEXT,
+      amount REAL,
+      category TEXT NOT NULL,
+      features TEXT,
+      created_at TEXT NOT NULL
+    )
+  `);
+
+  database.run('CREATE INDEX IF NOT EXISTS idx_training_category ON category_training_data(category)');
+  database.run('CREATE INDEX IF NOT EXISTS idx_training_created ON category_training_data(created_at)');
+
   const now = new Date().toISOString();
   database.run(
     `

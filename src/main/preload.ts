@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron';
-import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast } from '../shared/types';
+import { Budget, BudgetAlert, DuplicateReviewItem, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, Account, AccountSummary, Receipt, ReceiptQuery, ReceiptWithTransaction, ReceiptUploadResult, CashFlowForecast, CategoryPrediction, CategoryTrainingStats, BatchCategorizeResult } from '../shared/types';
 
 type ImportSource = 'alipay' | 'wechat' | 'yunshanfu' | 'bank';
 
@@ -169,6 +169,11 @@ const webAPI = {
     summary: { startingBalance: 0, projectedLow: 0, projectedHigh: 0, averageDailyChange: 0, trendDirection: 'stable' }
   } as CashFlowForecast),
   optimizeBillPayment: () => Promise.resolve({ suggestedDate: new Date().toISOString().split('T')[0], reason: 'Fallback' }),
+  // Category ML APIs (web fallback)
+  predictCategory: () => Promise.resolve({ category: '其他', confidence: 0.5, reason: 'Fallback' } as CategoryPrediction),
+  learnCategory: () => Promise.resolve(true),
+  getTrainingStats: () => Promise.resolve({ totalSamples: 0, samplesPerCategory: {}, lastTrainingDate: null } as CategoryTrainingStats),
+  batchCategorize: () => Promise.resolve({ categorized: 0, suggestions: [] } as BatchCategorizeResult),
 };
 
 const electronAPI = {
@@ -345,6 +350,16 @@ const electronAPI = {
   // Cash Flow APIs
   getCashFlowForecast: (accountId?: string, days?: number) => ipcRenderer.invoke('get-cashflow-forecast', accountId, days),
   optimizeBillPayment: (dueDate: string, amount: number) => ipcRenderer.invoke('optimize-bill-payment', dueDate, amount),
+
+  // Category ML APIs
+  predictCategory: (merchant: string, description: string, amount: number, date?: string): Promise<CategoryPrediction> =>
+    ipcRenderer.invoke('predict-category', merchant, description, amount, date),
+  learnCategory: (merchant: string, description: string, amount: number, category: string, date?: string): Promise<boolean> =>
+    ipcRenderer.invoke('learn-category', merchant, description, amount, category, date),
+  getTrainingStats: (): Promise<CategoryTrainingStats> =>
+    ipcRenderer.invoke('get-training-stats'),
+  batchCategorize: (dryRun?: boolean): Promise<BatchCategorizeResult> =>
+    ipcRenderer.invoke('batch-categorize', dryRun),
 };
 
 // Export the appropriate API based on environment

@@ -15,6 +15,7 @@ import { parseHtmlBill } from '../parsers/html';
 import { parseImageBillWithOcr } from '../parsers/ocr';
 import { generatePDFReport } from './export';
 import { generateCashFlowForecast, optimizeBillPaymentDate } from './cashflow';
+import { predictCategory, learnFromCorrection, getTrainingStats, batchCategorize } from './category-ml';
 import { Budget, BudgetAlert, DuplicateReviewItem, DuplicateType, Member, Summary, SummaryQuery, Transaction, TransactionListResponse, TransactionQuery, TransactionSource, SmartAssignmentResult, SmartAssignmentApplyResult, EmailAccount, EmailMessage, Account, AccountSummary } from '../shared/types';
 import { buildTransactionWhereClause } from './ipcFilters';
 import {
@@ -2168,6 +2169,44 @@ export function setupIpcHandlers(ipcMain: IpcMain, dialog: Dialog): void {
       return optimizeBillPaymentDate(dueDate, amount, forecast);
     } catch (error) {
       console.error('[IPC Error] optimize-bill-payment:', error);
+      throw error;
+    }
+  });
+
+  // Category ML IPC handlers
+  ipcMain.handle('predict-category', async (_, merchant: string, description: string, amount: number, date?: string) => {
+    try {
+      return predictCategory(merchant, description, amount, date);
+    } catch (error) {
+      console.error('[IPC Error] predict-category:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('learn-category', async (_, merchant: string, description: string, amount: number, category: string, date?: string) => {
+    try {
+      await learnFromCorrection(merchant, description, amount, category, date);
+      return true;
+    } catch (error) {
+      console.error('[IPC Error] learn-category:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('get-training-stats', async () => {
+    try {
+      return getTrainingStats();
+    } catch (error) {
+      console.error('[IPC Error] get-training-stats:', error);
+      throw error;
+    }
+  });
+
+  ipcMain.handle('batch-categorize', async (_, dryRun: boolean = true) => {
+    try {
+      return batchCategorize(dryRun);
+    } catch (error) {
+      console.error('[IPC Error] batch-categorize:', error);
       throw error;
     }
   });

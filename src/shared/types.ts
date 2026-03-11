@@ -331,3 +331,27 @@ export interface CashFlowForecast {
     trendDirection: 'up' | 'down' | 'stable';
   };
 }
+
+// Category ML types
+export interface CategoryPrediction {
+  category: string;
+  confidence: number;
+  reason: string;
+}
+
+export interface CategoryTrainingStats {
+  totalSamples: number;
+  samplesPerCategory: Record<string, number>;
+  lastTrainingDate: string | null;
+}
+
+export interface BatchCategorizeResult {
+  categorized: number;
+  suggestions: Array<{
+    transactionId: string;
+    merchant: string;
+    currentCategory: string;
+    suggestedCategory: string;
+    confidence: number;
+  }>;
+}
